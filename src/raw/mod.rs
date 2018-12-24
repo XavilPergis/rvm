@@ -15,7 +15,7 @@ pub enum ParseError {
 type ParseResult<T> = Result<T, ParseError>;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub(crate) struct ByteParser<'src> {
+pub struct ByteParser<'src> {
     pub src: &'src [u8],
     pub offset: usize,
 }

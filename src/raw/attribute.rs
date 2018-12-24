@@ -138,7 +138,6 @@ pub enum StackMapFrame {
 }
 
 use crate::raw::{
-    class::Class,
     constant::{Constant, PoolIndex},
     ByteParser, ParseError,
 };
@@ -280,7 +279,7 @@ pub(crate) fn parse_attribute(
         Constant::StringData(data) => Ok(match &**data {
             b"ConstantValue" => Attribute::ConstantValue(input.parse_u16()? as usize),
             b"Code" => Attribute::Code(parse_code(input, pool)?),
-            other => Attribute::Other(input.take(len)?.into()),
+            _ => Attribute::Other(input.take(len)?.into()),
         }),
         _ => Err(AttributeError::NameNotString),
     }?;

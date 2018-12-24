@@ -11,7 +11,7 @@
 use crate::raw::{
     attribute::{parse_attribute, AttributeInfo, AttributeResult},
     constant::{Constant, PoolIndex},
-    ByteParser, *,
+    ByteParser,
 };
 
 /// Properties and access patterns of this field. If this field is part of an
