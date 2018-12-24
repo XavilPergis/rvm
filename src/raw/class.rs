@@ -41,56 +41,70 @@
 //! Long and Double entries take up two slots in the constant pool, but the
 //! upper entry is never directly referenced.
 //! ```
-//! Constant/Utf8 (tag=1) {
+//! // tag = 1
+//! Constant::Utf8 {
 //!     tag:    u8
 //!     length: u16
 //!     data:   [u8; length]
 //! }
 //!
-//! Constant/Int (tag=3) {
+//! // tag = 3
+//! Constant::Int {
 //!     tag:  u8
 //!     data: i32
 //! }
 //!
-//! Constant/Float (tag=4) {
+//! // tag = 4
+//! Constant::Float {
 //!     tag:  u8
 //!     data: f32
 //! }
 //!
-//! Constant/Long (tag=5) {
+//! // tag = 5
+//! Constant::Long {
 //!     tag:  u8
 //!     data: i64
 //! }
 //!
-//! Constant/Double (tag=6) {
+//! // tag = 6
+//! Constant::Double {
 //!     tag:  u8
 //!     data: f64
 //! }
 //!
-//! Constant/Class (tag=7) + Constant/String (tag=8) + Constant/Method Type (tag=16) {
+//! Constant::Class // tag = 7
+//! Constant::String // tag = 8
+//! Constant::Method Type // tag = 16
+//! {
 //!     tag:   u8
 //!     index: u16 // index of string data
 //! }
 //!
-//! Constant/Field Ref (tag=9) + Constant/Method Ref (tag=10) + Constant/Interface Method Ref (tag=11) {
+//! Constant::Field Ref // tag = 9
+//! Constant::Method Ref // tag = 10
+//! Constant::Interface Method Ref // tag = 11
+//! {
 //!     tag:       u8
 //!     class:     u16 // index of class
 //!     name_type: u16 // index of name and type
 //! }
 //!
-//! Constant/Name And Type {
+//! // tag = 12
+//! Constant::Name And Type {
 //!     tag:       u8
 //!     class:     u16 // index of class
 //!     name_type: u16 // index of name and type
 //! }
 //!
-//! Constant/Method Handle (tag=15) {
+//! // tag = 15
+//! Constant::Method Handle {
 //!     tag:   u8
 //!     kind:  u8  // index of class
 //!     index: u16 // index of whatever `kind` requires
 //! }
 //!
-//! Constant/Invoke Dynamic (tag=18) {
+//! // tag = 18
+//! Constant::Invoke Dynamic {
 //!     tag:       u8
 //!     bootstrap: u8  // 0-based index into the bootstrap method table
 //!     name_type: u16 // index of name and type
@@ -98,7 +112,10 @@
 //! ```
 
 use crate::raw::{
+    attribute::{parse_attribute, AttributeError, AttributeInfo},
     constant::{parse_constant_pool, Constant, ConstantError},
+    field::{parse_field, Field},
+    method::{parse_method, Method},
     ByteParser, ParseError, ParseResult,
 };
 
@@ -117,6 +134,7 @@ pub enum ClassError {
     WrongMagic,
     Constant(ConstantError),
     Parse(ParseError),
+    Attribute(AttributeError),
 }
 
 impl From<ParseError> for ClassError {
@@ -131,9 +149,16 @@ impl From<ConstantError> for ClassError {
     }
 }
 
+impl From<AttributeError> for ClassError {
+    fn from(err: AttributeError) -> ClassError {
+        ClassError::Attribute(err)
+    }
+}
+
+/// The class file magic: `0xCAFEBABE`
 pub const CLASS_MAGIC: &[u8; 4] = &[0xCA, 0xFE, 0xBA, 0xBE];
 
-fn parse_class<'src>(input: &mut ByteParser<'src>) -> Result<Class, ClassError> {
+fn parse_class(input: &mut ByteParser<'_>) -> Result<Class, ClassError> {
     input.tag(CLASS_MAGIC)?;
     let version = parse_version(input)?;
     let constant_pool = parse_constant_pool(input)?;
@@ -141,11 +166,21 @@ fn parse_class<'src>(input: &mut ByteParser<'src>) -> Result<Class, ClassError> 
     let this_class = input.parse_u16()? as usize - 1;
     let super_class = input.parse_u16()? as usize - 1;
 
-    let interface_count = input.parse_u16()? as usize;
-    let mut interfaces = Vec::with_capacity(interface_count);
-    for _ in 0..interface_count {
-        interfaces.push(input.parse_u16()? as usize);
-    }
+    let interfaces_len = input.parse_u16()? as usize;
+    let interfaces = input.seq(interfaces_len, |input| {
+        input.parse_u16().map(|x| x as usize)
+    })?;
+
+    let fields_len = input.parse_u16()? as usize;
+    let fields = input.seq(fields_len, |input| parse_field(input, &constant_pool))?;
+
+    let methods_len = input.parse_u16()? as usize;
+    let methods = input.seq(methods_len, |input| parse_method(input, &constant_pool))?;
+
+    let attributes_len = input.parse_u16()? as usize;
+    let attributes = input.seq(attributes_len, |input| {
+        parse_attribute(input, &constant_pool)
+    })?;
 
     Ok(Class {
         version,
@@ -154,15 +189,14 @@ fn parse_class<'src>(input: &mut ByteParser<'src>) -> Result<Class, ClassError> 
         this_class,
         super_class,
         interfaces: interfaces.into(),
+        fields: fields.into(),
+        methods: methods.into(),
+        attributes: attributes.into(),
     })
 }
 
-pub struct Field;
-pub struct Method;
-pub struct Attribute;
-
 /// Access flags denote the properties of a given class file.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash)]
 pub struct Access(u16);
 
 impl Access {
@@ -216,8 +250,9 @@ impl std::ops::BitOr for Access {
     }
 }
 
-impl std::fmt::Display for Access {
+impl std::fmt::Debug for Access {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "({:X}) ", self.0)?;
         if self.is(Access::SUPER) {
             write!(f, "[super] ")?;
         }
@@ -249,7 +284,9 @@ impl std::fmt::Display for Access {
     }
 }
 
-/// Version of the class file. Versions are denoted as `M.m` where `M` is the
+/// Version of the class file.
+///
+/// Versions are denoted as `M.m` where `M` is the
 /// major version and `m` is the minor version. The version can be ordered
 /// lexicographically. JVM implementations can choose a range of compatible
 /// versions by selecting a minimum major version `Mi`, maximum major version
@@ -269,11 +306,11 @@ pub struct Class {
     pub this_class: usize,
     pub super_class: usize,
     pub constant_pool: Box<[Constant]>,
+
     pub interfaces: Box<[usize]>,
-    /* pub interfaces: Box<[usize]>,
-     * pub fields: Box<[Field]>,
-     * pub methods: Box<[Method]>,
-     * pub attributes: Box<[Attribute]>, */
+    pub fields: Box<[Field]>,
+    pub methods: Box<[Method]>,
+    pub attributes: Box<[AttributeInfo]>,
 }
 
 impl Class {

@@ -1,6 +1,8 @@
+pub mod attribute;
 pub mod class;
 pub mod constant;
 pub mod field;
+pub mod method;
 
 use byteorder::{BigEndian, ByteOrder};
 
@@ -50,6 +52,18 @@ impl<'src> ByteParser<'src> {
             self.offset += len;
             Ok(res)
         }
+    }
+
+    pub fn seq<F, T, E>(&mut self, len: usize, mut func: F) -> Result<Vec<T>, E>
+    where
+        F: FnMut(&mut Self) -> Result<T, E>,
+        E: From<ParseError>,
+    {
+        let mut vec = Vec::with_capacity(len);
+        for _ in 0..len {
+            vec.push(func(self)?);
+        }
+        Ok(vec)
     }
 
     pub fn parse_u8(&mut self) -> ParseResult<u8> {

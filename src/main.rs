@@ -114,7 +114,7 @@ fn main() {
     print_constant(&class.constant_pool, class.super_class, 1);
 
     print!(
-        "{}{} ",
+        "{:?}{} ",
         class.access_flags,
         get_class_name(class.this_class)
     );
@@ -125,4 +125,5 @@ fn main() {
     }
 
     println!();
+    println!("{:?}", class);
 }
