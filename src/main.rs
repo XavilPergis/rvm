@@ -1,9 +1,26 @@
 use rvm::raw::{class::Class, constant::Constant};
-use std::{fs::File, io::Read};
+use std::{collections::HashSet, fs::File, io::Read};
 
 fn main() {
     let mut buf = Vec::new();
-    let mut file = File::open(std::env::args().skip(1).next().unwrap()).unwrap();
+
+    let mut file_path = None;
+    let mut short_set = HashSet::new();
+    let mut long_set = HashSet::new();
+
+    for mut arg in std::env::args().skip(1) {
+        if arg.starts_with("-") {
+            if arg.starts_with("--") {
+                long_set.insert(arg.split_off(2));
+            } else {
+                short_set.extend(arg.chars().skip(1));
+            }
+        } else {
+            file_path = Some(arg);
+        }
+    }
+
+    let mut file = File::open(file_path.unwrap()).unwrap();
     file.read_to_end(&mut buf).unwrap();
 
     let class = Class::parse(buf).unwrap();
@@ -92,10 +109,12 @@ fn main() {
         }
     }
 
-    // for entry in 0..class.constant_pool.len() {
-    //     print!("#{} -> ", entry);
-    //     print_constant(&class.constant_pool, entry, 0);
-    // }
+    if short_set.contains(&'c') || long_set.contains("constant-pool") {
+        for entry in 0..class.constant_pool.len() {
+            print!("#{} -> ", entry);
+            print_constant(&class.constant_pool, entry, 0);
+        }
+    }
 
     let get_class_name = |idx| match &class.constant_pool[idx] {
         Constant::Class(idx) => match &class.constant_pool[*idx] {
@@ -106,11 +125,6 @@ fn main() {
     };
 
     println!("Version {}.{}", class.version.major, class.version.minor);
-    // println!("Access Flags: {}", class.access_flags);
-    // println!("This Class: {}", class.this_class);
-    // print_constant(&class.constant_pool, class.this_class, 1);
-    // println!("Super Class: {}", class.super_class);
-    // print_constant(&class.constant_pool, class.super_class, 1);
 
     print!(
         "{} {} ",
@@ -144,7 +158,7 @@ fn main() {
         )
         .unwrap_or("<not utf8>");
 
-        println!("{} {}", field.descriptor, name);
+        println!("{} {};", field.descriptor, name);
     }
 
     println!();
