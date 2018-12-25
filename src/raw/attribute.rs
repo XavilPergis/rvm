@@ -250,7 +250,6 @@ fn parse_code(input: &mut ByteParser<'_>, pool: &[Constant]) -> AttributeResult<
     let max_stack = input.parse_u16()? as usize;
     let max_locals = input.parse_u16()? as usize;
     let code_length = input.parse_u32()? as usize;
-    println!("code(len={})", code_length);
     let code = input.take(code_length)?;
 
     let exceptions_len = input.parse_u16()? as usize;
