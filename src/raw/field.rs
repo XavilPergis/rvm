@@ -9,7 +9,7 @@
 //! ```
 
 use crate::raw::{
-    attribute::{parse_attribute, AttributeError, AttributeInfo, AttributeResult},
+    attribute::{parse_attribute, AttributeError, AttributeInfo},
     constant::{Constant, PoolIndex},
     ByteParser, ParseError,
 };
