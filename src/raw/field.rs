@@ -9,9 +9,9 @@
 //! ```
 
 use crate::raw::{
-    attribute::{parse_attribute, AttributeError, AttributeInfo},
+    attribute::{parse_attribute, AttributeInfo},
     constant::{Constant, PoolIndex},
-    ByteParser, ParseError,
+    ByteParser, ClassError, ClassResult,
 };
 
 /// Properties and access patterns of this field. If this field is part of an
@@ -156,32 +156,7 @@ pub struct Descriptor {
     pub ty: FieldType,
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub enum FieldError {
-    Parse(ParseError),
-    Attribute(AttributeError),
-
-    /// Referenced constant was the incorrect type
-    WrongConstant,
-    /// Descriptor type was not recognized
-    BadDescriptorType(u8),
-}
-
-impl From<ParseError> for FieldError {
-    fn from(err: ParseError) -> Self {
-        FieldError::Parse(err)
-    }
-}
-
-impl From<AttributeError> for FieldError {
-    fn from(err: AttributeError) -> Self {
-        FieldError::Attribute(err)
-    }
-}
-
-type FieldResult<T> = Result<T, FieldError>;
-
-pub(crate) fn parse_field_descriptor(input: &mut ByteParser<'_>) -> FieldResult<Descriptor> {
+pub(crate) fn parse_field_descriptor(input: &mut ByteParser<'_>) -> ClassResult<Descriptor> {
     match input.peek(1)?[0] {
         b'[' => {
             let descriptor = parse_field_descriptor(input)?;
@@ -200,7 +175,7 @@ pub(crate) fn parse_field_descriptor(input: &mut ByteParser<'_>) -> FieldResult<
 
 pub(crate) fn parse_field_descriptor_terminal(
     input: &mut ByteParser<'_>,
-) -> FieldResult<FieldType> {
+) -> ClassResult<FieldType> {
     // TODO: verify there's not extra gunk at the end of the descriptor
     Ok(match input.parse_u8()? {
         b'B' => FieldType::Byte,
@@ -213,18 +188,18 @@ pub(crate) fn parse_field_descriptor_terminal(
         b'Z' => FieldType::Boolean,
         b'L' => FieldType::Object(input.take_while(|ch| ch != b';')?.into()),
 
-        other => return Err(FieldError::BadDescriptorType(other)),
+        other => return Err(ClassError::BadDescriptorType(other)),
     })
 }
 
-pub(crate) fn parse_field(input: &mut ByteParser<'_>, pool: &[Constant]) -> FieldResult<Field> {
+pub(crate) fn parse_field(input: &mut ByteParser<'_>, pool: &[Constant]) -> ClassResult<Field> {
     let access = Access(input.parse_u16()?);
     let name = input.parse_u16()? as usize - 1;
 
     let descriptor_index = input.parse_u16()? as usize - 1;
     let descriptor = match pool[descriptor_index].as_string_data() {
         Some(data) => parse_field_descriptor(&mut ByteParser::new(data)),
-        _ => Err(FieldError::WrongConstant),
+        _ => Err(ClassError::InvalidPoolType),
     }?;
 
     let attributes_len = input.parse_u16()? as usize;

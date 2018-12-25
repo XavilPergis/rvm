@@ -112,11 +112,11 @@
 //! ```
 
 use crate::raw::{
-    attribute::{parse_attribute, AttributeError, AttributeInfo},
-    constant::{parse_constant_pool, Constant, ConstantError},
-    field::{parse_field, Field, FieldError},
+    attribute::{parse_attribute, AttributeInfo},
+    constant::{parse_constant_pool, Constant},
+    field::{parse_field, Field},
     method::{parse_method, Method},
-    ByteParser, ParseError, ParseResult,
+    ByteParser, ClassError, ParseResult,
 };
 
 fn parse_version(input: &mut ByteParser<'_>) -> ParseResult<Version> {
@@ -127,39 +127,6 @@ fn parse_version(input: &mut ByteParser<'_>) -> ParseResult<Version> {
 
 fn parse_access_flags(input: &mut ByteParser<'_>) -> ParseResult<Access> {
     Ok(Access(input.parse_u16()?))
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub enum ClassError {
-    WrongMagic,
-    Constant(ConstantError),
-    Parse(ParseError),
-    Attribute(AttributeError),
-    Field(FieldError),
-}
-
-impl From<ParseError> for ClassError {
-    fn from(err: ParseError) -> ClassError {
-        ClassError::Parse(err)
-    }
-}
-
-impl From<ConstantError> for ClassError {
-    fn from(err: ConstantError) -> ClassError {
-        ClassError::Constant(err)
-    }
-}
-
-impl From<AttributeError> for ClassError {
-    fn from(err: AttributeError) -> ClassError {
-        ClassError::Attribute(err)
-    }
-}
-
-impl From<FieldError> for ClassError {
-    fn from(err: FieldError) -> ClassError {
-        ClassError::Field(err)
-    }
 }
 
 /// The class file magic: `0xCAFEBABE`

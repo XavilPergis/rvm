@@ -45,7 +45,7 @@ pub enum MethodHandleKind {
 }
 
 impl MethodHandleKind {
-    fn from(ty: u8) -> Result<MethodHandleKind, ConstantError> {
+    fn from(ty: u8) -> ClassResult<MethodHandleKind> {
         Ok(match ty {
             1 => MethodHandleKind::GetField,
             2 => MethodHandleKind::GetStatic,
@@ -56,7 +56,7 @@ impl MethodHandleKind {
             7 => MethodHandleKind::InvokeSpecial,
             8 => MethodHandleKind::NewInvokeSpecial,
             9 => MethodHandleKind::InvokeInterface,
-            other => return Err(ConstantError::UnknownMethodHandle(other)),
+            other => return Err(ClassError::UnknownMethodHandleType(other)),
         })
     }
 }
@@ -119,7 +119,7 @@ impl Constant {
     }
 }
 
-fn parse_constant<'src>(input: &mut ByteParser<'src>) -> Result<Constant, ConstantError> {
+fn parse_constant<'src>(input: &mut ByteParser<'src>) -> ClassResult<Constant> {
     Ok(match input.parse_u8()? {
         CONSTANT_UTF8 => {
             let len = input.parse_u16()? as usize;
@@ -168,15 +168,15 @@ fn parse_constant<'src>(input: &mut ByteParser<'src>) -> Result<Constant, Consta
             name_and_type: input.parse_u16()? as usize - 1,
         },
 
-        other => return Err(ConstantError::UnknownType(other)),
+        other => return Err(ClassError::UnknownConstantTag(other)),
     })
 }
 
 pub(crate) fn parse_constant_pool<'src>(
     input: &mut ByteParser<'src>,
-) -> Result<Box<[Constant]>, ConstantError> {
+) -> ClassResult<Box<[Constant]>> {
     let num_consts = match input.parse_u16()? as usize {
-        0 => return Err(ConstantError::ConstantPoolTooSmall),
+        0 => return Err(ClassError::ConstantPoolTooSmall),
         num => num - 1,
     };
 
@@ -198,18 +198,4 @@ pub(crate) fn parse_constant_pool<'src>(
     }
 
     Ok(consts.into())
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub enum ConstantError {
-    UnknownType(u8),
-    UnknownMethodHandle(u8),
-    ConstantPoolTooSmall,
-    Parse(ParseError),
-}
-
-impl From<ParseError> for ConstantError {
-    fn from(err: ParseError) -> Self {
-        ConstantError::Parse(err)
-    }
 }

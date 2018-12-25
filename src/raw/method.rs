@@ -7,9 +7,9 @@
 //! }
 
 use crate::raw::{
-    attribute::{parse_attribute, AttributeInfo, AttributeResult},
+    attribute::{parse_attribute, AttributeInfo},
     constant::{Constant, PoolIndex},
-    ByteParser,
+    ByteParser, ClassResult,
 };
 
 /// Method properties bitfield.
@@ -133,10 +133,7 @@ impl std::fmt::Display for Access {
     }
 }
 
-pub(crate) fn parse_method(
-    input: &mut ByteParser<'_>,
-    pool: &[Constant],
-) -> AttributeResult<Method> {
+pub(crate) fn parse_method(input: &mut ByteParser<'_>, pool: &[Constant]) -> ClassResult<Method> {
     let access = Access(input.parse_u16()?);
     let name = input.parse_u16()? as usize - 1;
     let descriptor = input.parse_u16()? as usize - 1;

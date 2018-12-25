@@ -6,6 +6,34 @@ pub mod method;
 
 use byteorder::{BigEndian, ByteOrder};
 
+pub type ClassResult<T> = Result<T, ClassError>;
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub enum ClassError {
+    Parse(ParseError),
+
+    // Constant pool parsing errors
+    UnknownConstantTag(u8),
+    UnknownMethodHandleType(u8),
+    ConstantPoolTooSmall,
+
+    // Class parse errors
+    WrongMagic,
+
+    // Descriptor parse errors
+    BadDescriptorType(u8),
+
+    // General errors
+    InvalidPoolIndex,
+    InvalidPoolType,
+}
+
+impl From<ParseError> for ClassError {
+    fn from(err: ParseError) -> Self {
+        ClassError::Parse(err)
+    }
+}
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum ParseError {
     Incomplete(usize),

@@ -139,7 +139,7 @@ pub enum StackMapFrame {
 
 use crate::raw::{
     constant::{Constant, PoolIndex},
-    ByteParser, ParseError,
+    ByteParser, ClassError, ClassResult,
 };
 use std::ops::Range;
 
@@ -199,27 +199,13 @@ pub enum Attribute {
     // StackMapTable(),
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub enum AttributeError {
-    Parse(ParseError),
-    NameNotString,
-}
-
-impl From<ParseError> for AttributeError {
-    fn from(err: ParseError) -> Self {
-        AttributeError::Parse(err)
-    }
-}
-
-pub type AttributeResult<T> = Result<T, AttributeError>;
-
 // ExceptionInfo {
 //     start_pc: u16,
 //     end_pc: u16,
 //     handler_pc: u16,
 //     catch_type: u16,
 // }
-fn parse_exception_info(input: &mut ByteParser<'_>) -> AttributeResult<ExceptionInfo> {
+fn parse_exception_info(input: &mut ByteParser<'_>) -> ClassResult<ExceptionInfo> {
     let start = input.parse_u16()? as usize;
     let end = input.parse_u16()? as usize;
     let handler_pc = input.parse_u16()? as usize;
@@ -246,7 +232,7 @@ fn parse_exception_info(input: &mut ByteParser<'_>) -> AttributeResult<Exception
 //     attributes_count: u16,
 //     attributes: [AttributeInfo; attributes_count],
 // }
-fn parse_code(input: &mut ByteParser<'_>, pool: &[Constant]) -> AttributeResult<Code> {
+fn parse_code(input: &mut ByteParser<'_>, pool: &[Constant]) -> ClassResult<Code> {
     let max_stack = input.parse_u16()? as usize;
     let max_locals = input.parse_u16()? as usize;
     let code_length = input.parse_u32()? as usize;
@@ -270,7 +256,7 @@ fn parse_code(input: &mut ByteParser<'_>, pool: &[Constant]) -> AttributeResult<
 pub(crate) fn parse_attribute(
     input: &mut ByteParser<'_>,
     pool: &[Constant],
-) -> AttributeResult<AttributeInfo> {
+) -> ClassResult<AttributeInfo> {
     let index = input.parse_u16()? as usize - 1;
     let len = input.parse_u32()? as usize;
 
@@ -280,7 +266,7 @@ pub(crate) fn parse_attribute(
             b"Code" => Attribute::Code(parse_code(input, pool)?),
             _ => Attribute::Other(input.take(len)?.into()),
         }),
-        _ => Err(AttributeError::NameNotString),
+        _ => Err(ClassError::InvalidPoolType),
     }?;
 
     Ok(AttributeInfo { name: index, attr })
