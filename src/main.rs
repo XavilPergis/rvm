@@ -14,6 +14,7 @@ fn main() {
         }
 
         match &pool[index] {
+            Constant::Nothing => println!("<nothing>"),
             Constant::Integer(val) => println!("int: {}", val),
             Constant::Float(val) => println!("float: {}", val),
             Constant::Long(val) => println!("long: {}", val),
@@ -21,7 +22,7 @@ fn main() {
 
             Constant::StringData(data) => println!(
                 "string data: {}",
-                std::str::from_utf8(data).unwrap_or("<NOT UTF8>")
+                std::str::from_utf8(data).unwrap_or("<not utf8>")
             ),
 
             Constant::String(idx) => {
@@ -88,42 +89,77 @@ fn main() {
                 print_constant(pool, *bootstrap_method_attr, depth + 1);
                 print_constant(pool, *name_and_type, depth + 1);
             }
-
-            _ => (),
         }
     }
 
-    for entry in 0..class.constant_pool.len() {
-        print!("#{} -> ", entry);
-        print_constant(&class.constant_pool, entry, 0);
-    }
+    // for entry in 0..class.constant_pool.len() {
+    //     print!("#{} -> ", entry);
+    //     print_constant(&class.constant_pool, entry, 0);
+    // }
 
     let get_class_name = |idx| match &class.constant_pool[idx] {
         Constant::Class(idx) => match &class.constant_pool[*idx] {
-            Constant::StringData(data) => std::str::from_utf8(data).unwrap_or("<NOT UTF8>"),
-            _ => "<SYMBOL NOT FOUND>",
+            Constant::StringData(data) => std::str::from_utf8(data).unwrap_or("<not utf8>"),
+            _ => "<symbol not found>",
         },
-        _ => "<SYMBOL NOT FOUND>",
+        _ => "<symbol not found>",
     };
 
     println!("Version {}.{}", class.version.major, class.version.minor);
     // println!("Access Flags: {}", class.access_flags);
-    println!("This Class: {}", class.this_class);
-    print_constant(&class.constant_pool, class.this_class, 1);
-    println!("Super Class: {}", class.super_class);
-    print_constant(&class.constant_pool, class.super_class, 1);
+    // println!("This Class: {}", class.this_class);
+    // print_constant(&class.constant_pool, class.this_class, 1);
+    // println!("Super Class: {}", class.super_class);
+    // print_constant(&class.constant_pool, class.super_class, 1);
 
     print!(
-        "{:?}{} ",
+        "{} {} ",
         class.access_flags,
         get_class_name(class.this_class)
     );
 
     match get_class_name(class.super_class) {
         "java/lang/Object" | "java/lang/Enum" => {}
-        _ => print!("extends {}", get_class_name(class.super_class)),
+        _ => print!("extends {} ", get_class_name(class.super_class)),
+    }
+
+    if class.interfaces.len() > 0 {
+        print!("implements ");
+        for &iface in &class.interfaces[..class.interfaces.len() - 1] {
+            print!("{}, ", get_class_name(iface));
+        }
+        print!(
+            "{}",
+            get_class_name(class.interfaces[class.interfaces.len() - 1])
+        );
+    }
+
+    println!(" {{");
+    for field in &*class.fields {
+        print!("    {} ", field.access);
+        let name = std::str::from_utf8(
+            class.constant_pool[field.name]
+                .as_string_data()
+                .unwrap_or(b"<bad field name>"),
+        )
+        .unwrap_or("<not utf8>");
+
+        println!("{} {}", field.descriptor, name);
     }
 
     println!();
-    println!("{:?}", class);
+
+    for method in &*class.methods {
+        print!("    {} ", method.access);
+        let name = std::str::from_utf8(
+            class.constant_pool[method.name]
+                .as_string_data()
+                .unwrap_or(b"<bad field name>"),
+        )
+        .unwrap_or("<not utf8>");
+
+        println!("{}(...)", name);
+    }
+    println!("}}");
+    // println!("{:?}", class);
 }

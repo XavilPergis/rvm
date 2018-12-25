@@ -106,6 +106,19 @@ pub enum Constant {
     },
 }
 
+impl Constant {
+    pub fn is_nothing(&self) -> bool {
+        self == &Constant::Nothing
+    }
+
+    pub fn as_string_data(&self) -> Option<&[u8]> {
+        match self {
+            Constant::StringData(data) => Some(&**data),
+            _ => None,
+        }
+    }
+}
+
 fn parse_constant<'src>(input: &mut ByteParser<'src>) -> Result<Constant, ConstantError> {
     Ok(match input.parse_u8()? {
         CONSTANT_UTF8 => {

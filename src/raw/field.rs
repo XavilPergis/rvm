@@ -9,9 +9,9 @@
 //! ```
 
 use crate::raw::{
-    attribute::{parse_attribute, AttributeInfo, AttributeResult},
+    attribute::{parse_attribute, AttributeError, AttributeInfo, AttributeResult},
     constant::{Constant, PoolIndex},
-    ByteParser,
+    ByteParser, ParseError,
 };
 
 /// Properties and access patterns of this field. If this field is part of an
@@ -45,12 +45,188 @@ impl Access {
     /// Declared volatile; cannot be cached. If this flag is set, the `final`
     /// flag must not be set.
     pub const VOLATILE: Access = Access(0x0040);
+
+    pub fn is(self, access: Access) -> bool {
+        self & access != Access(0)
+    }
+
+    pub fn into_raw(self) -> u16 {
+        self.0
+    }
 }
 
-pub(crate) fn parse_field(input: &mut ByteParser<'_>, pool: &[Constant]) -> AttributeResult<Field> {
+impl std::ops::BitAnd for Access {
+    type Output = Access;
+
+    fn bitand(self, other: Access) -> Access {
+        Access(self.0 & other.0)
+    }
+}
+
+impl std::ops::BitOr for Access {
+    type Output = Access;
+
+    fn bitor(self, other: Access) -> Access {
+        Access(self.0 | other.0)
+    }
+}
+
+impl std::fmt::Display for Access {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let mut was_written = false;
+        let mut write = |s| {
+            if was_written {
+                write!(f, " {}", s)
+            } else {
+                write!(f, "{}", s)?;
+                was_written = true;
+                Ok(())
+            }
+        };
+
+        if !self.is(Access::ENUM) {
+            if self.is(Access::PUBLIC) {
+                write("public")?;
+            } else if self.is(Access::PROTECTED) {
+                write("protected")?;
+            } else if self.is(Access::PRIVATE) {
+                write("private")?;
+            }
+
+            if self.is(Access::STATIC) {
+                write("static")?;
+            }
+
+            if self.is(Access::FINAL) {
+                write("final")?;
+            } else if self.is(Access::TRANSIENT) {
+                write("transient")?;
+            }
+
+            if self.is(Access::VOLATILE) {
+                write("volatile")?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl std::fmt::Display for Descriptor {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match &self.ty {
+                FieldType::Byte => "byte",
+                FieldType::Char => "char",
+                FieldType::Double => "double",
+                FieldType::Float => "float",
+                FieldType::Int => "int",
+                FieldType::Long => "long",
+                FieldType::Short => "short",
+                FieldType::Boolean => "boolean",
+                FieldType::Object(name) => std::str::from_utf8(&name).unwrap_or("<not utf8>"),
+            }
+        )?;
+
+        for _ in 0..self.dimensions {
+            write!(f, "[]")?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub enum FieldType {
+    Byte,
+    Char,
+    Double,
+    Float,
+    Int,
+    Long,
+    Short,
+    Boolean,
+    Object(Box<[u8]>),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct Descriptor {
+    pub dimensions: usize,
+    pub ty: FieldType,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub enum FieldError {
+    Parse(ParseError),
+    Attribute(AttributeError),
+
+    /// Referenced constant was the incorrect type
+    WrongConstant,
+    /// Descriptor type was not recognized
+    BadDescriptorType(u8),
+}
+
+impl From<ParseError> for FieldError {
+    fn from(err: ParseError) -> Self {
+        FieldError::Parse(err)
+    }
+}
+
+impl From<AttributeError> for FieldError {
+    fn from(err: AttributeError) -> Self {
+        FieldError::Attribute(err)
+    }
+}
+
+type FieldResult<T> = Result<T, FieldError>;
+
+pub(crate) fn parse_field_descriptor(input: &mut ByteParser<'_>) -> FieldResult<Descriptor> {
+    match input.peek(1)?[0] {
+        b'[' => {
+            let descriptor = parse_field_descriptor(input)?;
+            Ok(Descriptor {
+                dimensions: descriptor.dimensions + 1,
+                ..descriptor
+            })
+        }
+
+        _ => Ok(Descriptor {
+            dimensions: 0,
+            ty: parse_field_descriptor_terminal(input)?,
+        }),
+    }
+}
+
+pub(crate) fn parse_field_descriptor_terminal(
+    input: &mut ByteParser<'_>,
+) -> FieldResult<FieldType> {
+    // TODO: verify there's not extra gunk at the end of the descriptor
+    Ok(match input.parse_u8()? {
+        b'B' => FieldType::Byte,
+        b'C' => FieldType::Char,
+        b'D' => FieldType::Double,
+        b'F' => FieldType::Float,
+        b'I' => FieldType::Int,
+        b'J' => FieldType::Long,
+        b'S' => FieldType::Short,
+        b'Z' => FieldType::Boolean,
+        b'L' => FieldType::Object(input.take_while(|ch| ch != b';')?.into()),
+
+        other => return Err(FieldError::BadDescriptorType(other)),
+    })
+}
+
+pub(crate) fn parse_field(input: &mut ByteParser<'_>, pool: &[Constant]) -> FieldResult<Field> {
     let access = Access(input.parse_u16()?);
     let name = input.parse_u16()? as usize - 1;
-    let descriptor = input.parse_u16()? as usize - 1;
+
+    let descriptor_index = input.parse_u16()? as usize - 1;
+    let descriptor = match pool[descriptor_index].as_string_data() {
+        Some(data) => parse_field_descriptor(&mut ByteParser::new(data)),
+        _ => Err(FieldError::WrongConstant),
+    }?;
+
     let attributes_len = input.parse_u16()? as usize;
     let attributes = input.seq(attributes_len, |input| parse_attribute(input, pool))?;
 
@@ -68,9 +244,8 @@ pub struct Field {
     /// Index into the constant pool, pointing to a `Constant::StringData` that
     /// denotes the name of this field
     pub name: PoolIndex,
-    /// Index into the constant pool, pointing to a `Constant::StringData` that
-    /// denotes the type of this field
-    pub descriptor: PoolIndex,
+    /// The type for this field
+    pub descriptor: Descriptor,
 
     pub attributes: Box<[AttributeInfo]>,
 }

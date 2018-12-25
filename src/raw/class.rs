@@ -114,7 +114,7 @@
 use crate::raw::{
     attribute::{parse_attribute, AttributeError, AttributeInfo},
     constant::{parse_constant_pool, Constant, ConstantError},
-    field::{parse_field, Field},
+    field::{parse_field, Field, FieldError},
     method::{parse_method, Method},
     ByteParser, ParseError, ParseResult,
 };
@@ -135,6 +135,7 @@ pub enum ClassError {
     Constant(ConstantError),
     Parse(ParseError),
     Attribute(AttributeError),
+    Field(FieldError),
 }
 
 impl From<ParseError> for ClassError {
@@ -155,6 +156,12 @@ impl From<AttributeError> for ClassError {
     }
 }
 
+impl From<FieldError> for ClassError {
+    fn from(err: FieldError) -> ClassError {
+        ClassError::Field(err)
+    }
+}
+
 /// The class file magic: `0xCAFEBABE`
 pub const CLASS_MAGIC: &[u8; 4] = &[0xCA, 0xFE, 0xBA, 0xBE];
 
@@ -168,7 +175,7 @@ fn parse_class(input: &mut ByteParser<'_>) -> Result<Class, ClassError> {
 
     let interfaces_len = input.parse_u16()? as usize;
     let interfaces = input.seq(interfaces_len, |input| {
-        input.parse_u16().map(|x| x as usize)
+        input.parse_u16().map(|x| x as usize - 1)
     })?;
 
     let fields_len = input.parse_u16()? as usize;
@@ -196,7 +203,7 @@ fn parse_class(input: &mut ByteParser<'_>) -> Result<Class, ClassError> {
 }
 
 /// Access flags denote the properties of a given class file.
-#[derive(Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Access(u16);
 
 impl Access {
@@ -250,34 +257,37 @@ impl std::ops::BitOr for Access {
     }
 }
 
-impl std::fmt::Debug for Access {
+impl std::fmt::Display for Access {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "({:X}) ", self.0)?;
-        if self.is(Access::SUPER) {
-            write!(f, "[super] ")?;
-        }
-        if self.is(Access::SYNTHETIC) {
-            write!(f, "[synthetic] ")?;
-        }
+        let mut was_written = false;
+        let mut write = |s| {
+            if was_written {
+                write!(f, " {}", s)
+            } else {
+                write!(f, "{}", s)?;
+                was_written = true;
+                Ok(())
+            }
+        };
 
         if self.is(Access::PUBLIC) {
-            write!(f, "public ")?;
-        }
-        if self.is(Access::FINAL) {
-            write!(f, "final ")?;
-        }
-        if self.is(Access::ABSTRACT) && !self.is(Access::INTERFACE) {
-            write!(f, "abstract ")?;
+            write("public")?;
         }
 
-        if self.is(Access::ANNOTATION) {
-            write!(f, "annotation ")?;
+        if self.is(Access::ENUM) {
+            write("enum")?;
+        } else if self.is(Access::ANNOTATION) {
+            write("@interface")?;
         } else if self.is(Access::INTERFACE) {
-            write!(f, "interface ")?;
-        } else if self.is(Access::ENUM) {
-            write!(f, "enum ")?;
+            write("interface")?;
         } else {
-            write!(f, "class ")?;
+            if self.is(Access::FINAL) {
+                write("final")?;
+            } else if self.is(Access::ABSTRACT) {
+                write("abstract")?;
+            }
+
+            write("class")?;
         }
 
         Ok(())

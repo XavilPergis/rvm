@@ -9,6 +9,7 @@ use byteorder::{BigEndian, ByteOrder};
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum ParseError {
     Incomplete(usize),
+    IncompleteUnknown,
     Error(usize),
 }
 
@@ -50,6 +51,39 @@ impl<'src> ByteParser<'src> {
         } else {
             let res = &self.src[self.offset..self.offset + len];
             self.offset += len;
+            Ok(res)
+        }
+    }
+
+    /// Take bytes until a condition is no longer met. Note that `take_while`
+    /// will **not** consume the last inspected byte! That is,
+    /// `ByteParser::new(b"aaaab").take_while(|c| c != b'b')` will not consume
+    /// `b`! Additionally, the parser will return an error if the end of the
+    /// input stream is reached while the predicate has not yet returned
+    /// `false`.
+    pub fn take_while<F>(&mut self, mut func: F) -> ParseResult<&'src [u8]>
+    where
+        F: FnMut(u8) -> bool,
+    {
+        let mut len = 0;
+        // While we haven't run off the end of the buffer...
+        while self.src.len() - self.offset - len > 0 {
+            // if the condition is no longer met, then we take what we've seen and return it
+            if !func(self.src[self.offset + len]) {
+                return self.take(len);
+            }
+
+            len += 1;
+        }
+
+        Err(ParseError::IncompleteUnknown)
+    }
+
+    pub fn peek(&mut self, len: usize) -> ParseResult<&'src [u8]> {
+        if self.remaining() < len {
+            Err(ParseError::Incomplete(len - self.remaining()))
+        } else {
+            let res = &self.src[self.offset..self.offset + len];
             Ok(res)
         }
     }

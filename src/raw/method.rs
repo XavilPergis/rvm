@@ -84,6 +84,55 @@ impl std::ops::BitOr for Access {
     }
 }
 
+impl std::fmt::Display for Access {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let mut was_written = false;
+        let mut write = |s| {
+            if was_written {
+                write!(f, " {}", s)
+            } else {
+                write!(f, "{}", s)?;
+                was_written = true;
+                Ok(())
+            }
+        };
+
+        if self.is(Access::PUBLIC) {
+            write("public")?;
+        } else if self.is(Access::PROTECTED) {
+            write("protected")?;
+        } else if self.is(Access::PRIVATE) {
+            write("private")?;
+        }
+
+        if self.is(Access::ABSTRACT) {
+            write("abstract")?;
+        } else {
+            if self.is(Access::STATIC) {
+                write("static")?;
+            }
+
+            if self.is(Access::FINAL) {
+                write("final")?;
+            }
+
+            if self.is(Access::SYNCHRONIZED) {
+                write("synchronized")?;
+            }
+
+            if self.is(Access::STRICT) {
+                write("strictfp")?;
+            }
+
+            if self.is(Access::NATIVE) {
+                write("native")?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
 pub(crate) fn parse_method(
     input: &mut ByteParser<'_>,
     pool: &[Constant],
