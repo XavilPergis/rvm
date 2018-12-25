@@ -4,6 +4,7 @@
 //!
 //! ```
 //! Class {
+//!     // 0xCAFEBABE
 //!     magic: u32,
 //!     minor_version: u16,
 //!     major_version: u16,
@@ -28,111 +29,29 @@
 //!     attributes: [Attribute; attributes_count],
 //! }
 //! ```
-//!
-//! ## Constant Pool
-//! Entries in the constant pool start at 1, and indices into the pool are
-//! likewise 1-based. Each entry is comprised of a 1-byte tag, followed by a
-//! variable length of bytes decided by the type of constant.
-//!
-//! ### Oddities
-//! Utf8 constants aren't actually UTF-8, but a slightly modified UTF-8 as
-//! described in §4.4.7
-//!
-//! Long and Double entries take up two slots in the constant pool, but the
-//! upper entry is never directly referenced.
-//! ```
-//! // tag = 1
-//! Constant::Utf8 {
-//!     tag:    u8
-//!     length: u16
-//!     data:   [u8; length]
-//! }
-//!
-//! // tag = 3
-//! Constant::Int {
-//!     tag:  u8
-//!     data: i32
-//! }
-//!
-//! // tag = 4
-//! Constant::Float {
-//!     tag:  u8
-//!     data: f32
-//! }
-//!
-//! // tag = 5
-//! Constant::Long {
-//!     tag:  u8
-//!     data: i64
-//! }
-//!
-//! // tag = 6
-//! Constant::Double {
-//!     tag:  u8
-//!     data: f64
-//! }
-//!
-//! Constant::Class // tag = 7
-//! Constant::String // tag = 8
-//! Constant::Method Type // tag = 16
-//! {
-//!     tag:   u8
-//!     index: u16 // index of string data
-//! }
-//!
-//! Constant::Field Ref // tag = 9
-//! Constant::Method Ref // tag = 10
-//! Constant::Interface Method Ref // tag = 11
-//! {
-//!     tag:       u8
-//!     class:     u16 // index of class
-//!     name_type: u16 // index of name and type
-//! }
-//!
-//! // tag = 12
-//! Constant::Name And Type {
-//!     tag:       u8
-//!     class:     u16 // index of class
-//!     name_type: u16 // index of name and type
-//! }
-//!
-//! // tag = 15
-//! Constant::Method Handle {
-//!     tag:   u8
-//!     kind:  u8  // index of class
-//!     index: u16 // index of whatever `kind` requires
-//! }
-//!
-//! // tag = 18
-//! Constant::Invoke Dynamic {
-//!     tag:       u8
-//!     bootstrap: u8  // 0-based index into the bootstrap method table
-//!     name_type: u16 // index of name and type
-//! }
-//! ```
 
 use crate::raw::{
     attribute::{parse_attribute, AttributeInfo},
     constant::{parse_constant_pool, Constant},
     field::{parse_field, Field},
     method::{parse_method, Method},
-    ByteParser, ClassError, ParseResult,
+    ByteParser, ClassError, ClassResult, ParseResult,
 };
 
-fn parse_version(input: &mut ByteParser<'_>) -> ParseResult<Version> {
+pub fn parse_version(input: &mut ByteParser<'_>) -> ParseResult<Version> {
     let minor = input.parse_u16()?;
     let major = input.parse_u16()?;
     Ok(Version { minor, major })
 }
 
-fn parse_access_flags(input: &mut ByteParser<'_>) -> ParseResult<Access> {
+pub fn parse_access_flags(input: &mut ByteParser<'_>) -> ParseResult<Access> {
     Ok(Access(input.parse_u16()?))
 }
 
 /// The class file magic: `0xCAFEBABE`
 pub const CLASS_MAGIC: &[u8; 4] = &[0xCA, 0xFE, 0xBA, 0xBE];
 
-fn parse_class(input: &mut ByteParser<'_>) -> Result<Class, ClassError> {
+pub fn parse_class(input: &mut ByteParser<'_>) -> ClassResult<Class> {
     input.tag(CLASS_MAGIC)?;
     let version = parse_version(input)?;
     let constant_pool = parse_constant_pool(input)?;

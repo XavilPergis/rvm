@@ -41,7 +41,7 @@ pub enum ParseError {
     Error(usize),
 }
 
-type ParseResult<T> = Result<T, ParseError>;
+pub type ParseResult<T> = Result<T, ParseError>;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct ByteParser<'src> {
@@ -84,10 +84,10 @@ impl<'src> ByteParser<'src> {
     }
 
     /// Take bytes until a condition is no longer met. Note that `take_while`
-    /// will **not** consume the last inspected byte! That is,
-    /// `ByteParser::new(b"aaaab").take_while(|c| c != b'b')` will not consume
-    /// `b`! Additionally, the parser will return an error if the end of the
-    /// input stream is reached while the predicate has not yet returned
+    /// will consume the last inspected byte! That is,
+    /// `ByteParser::new(b"aaaab").take_while(|c| c != b'b')` will consume the
+    /// entire input! Additionally, the parser will return an error if the end
+    /// of the input stream is reached while the predicate has not yet returned
     /// `false`.
     pub fn take_while<F>(&mut self, mut func: F) -> ParseResult<&'src [u8]>
     where
@@ -96,9 +96,10 @@ impl<'src> ByteParser<'src> {
         let mut len = 0;
         // While we haven't run off the end of the buffer...
         while self.src.len() - self.offset - len > 0 {
-            // if the condition is no longer met, then we take what we've seen and return it
+            // if the condition is no longer met, then we take what we've seen
+            // and return it
             if !func(self.src[self.offset + len]) {
-                return self.take(len);
+                return self.take(len + 1);
             }
 
             len += 1;
@@ -119,7 +120,6 @@ impl<'src> ByteParser<'src> {
     pub fn seq<F, T, E>(&mut self, len: usize, mut func: F) -> Result<Vec<T>, E>
     where
         F: FnMut(&mut Self) -> Result<T, E>,
-        E: From<ParseError>,
     {
         let mut vec = Vec::with_capacity(len);
         for _ in 0..len {

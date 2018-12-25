@@ -14,7 +14,9 @@ use crate::raw::{
     ByteParser, ClassError, ClassResult,
 };
 
-/// Properties and access patterns of this field. If this field is part of an
+/// Properties and access patterns of this field.
+///
+/// If this field is part of an
 /// interface, then the `public`, `final`, and `static` flags must all be set,
 /// and no other flags except `synthetic` can be set.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -159,6 +161,7 @@ pub struct Descriptor {
 pub(crate) fn parse_field_descriptor(input: &mut ByteParser<'_>) -> ClassResult<Descriptor> {
     match input.peek(1)?[0] {
         b'[' => {
+            input.take(1)?;
             let descriptor = parse_field_descriptor(input)?;
             Ok(Descriptor {
                 dimensions: descriptor.dimensions + 1,
@@ -186,7 +189,14 @@ pub(crate) fn parse_field_descriptor_terminal(
         b'J' => FieldType::Long,
         b'S' => FieldType::Short,
         b'Z' => FieldType::Boolean,
-        b'L' => FieldType::Object(input.take_while(|ch| ch != b';')?.into()),
+        b'L' => FieldType::Object(
+            input
+                .take_while(|ch| ch != b';')?
+                .split_last()
+                .map(|(_, tail)| tail)
+                .unwrap_or(b"")
+                .into(),
+        ),
 
         other => return Err(ClassError::BadDescriptorType(other)),
     })

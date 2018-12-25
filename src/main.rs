@@ -172,8 +172,20 @@ fn main() {
         )
         .unwrap_or("<not utf8>");
 
-        println!("{}(...)", name);
+        print!("{} {}(", method.descriptor.ret, name);
+        pprint_list(&method.descriptor.args);
+        println!(");");
     }
     println!("}}");
     // println!("{:?}", class);
+}
+
+fn pprint_list<T: std::fmt::Display>(items: &[T]) {
+    if items.len() > 0 {
+        for item in &items[..items.len() - 1] {
+            print!("{}, ", item);
+        }
+
+        print!("{}", &items[items.len() - 1]);
+    }
 }

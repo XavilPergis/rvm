@@ -1,3 +1,85 @@
+//! # Constant Pool
+//! Entries in the constant pool start at 1, and indices into the pool are
+//! likewise 1-based. Each entry is comprised of a 1-byte tag, followed by a
+//! variable length of bytes decided by the type of constant.
+//!
+//! ### Oddities
+//! Utf8 constants aren't actually UTF-8, but a slightly modified UTF-8 as
+//! described in §4.4.7
+//!
+//! Long and Double entries take up two slots in the constant pool, but the
+//! upper entry is never directly referenced.
+//! ```
+//! // tag = 1
+//! Constant::Utf8 {
+//!     tag:    u8
+//!     length: u16
+//!     data:   [u8; length]
+//! }
+//!
+//! // tag = 3
+//! Constant::Int {
+//!     tag:  u8
+//!     data: i32
+//! }
+//!
+//! // tag = 4
+//! Constant::Float {
+//!     tag:  u8
+//!     data: f32
+//! }
+//!
+//! // tag = 5
+//! Constant::Long {
+//!     tag:  u8
+//!     data: i64
+//! }
+//!
+//! // tag = 6
+//! Constant::Double {
+//!     tag:  u8
+//!     data: f64
+//! }
+//!
+//! Constant::Class // tag = 7
+//! Constant::String // tag = 8
+//! Constant::Method Type // tag = 16
+//! {
+//!     tag:   u8
+//!     index: u16 // index of string data
+//! }
+//!
+//! Constant::Field Ref // tag = 9
+//! Constant::Method Ref // tag = 10
+//! Constant::Interface Method Ref // tag = 11
+//! {
+//!     tag:       u8
+//!     class:     u16 // index of class
+//!     name_type: u16 // index of name and type
+//! }
+//!
+//! // tag = 12
+//! Constant::Name And Type {
+//!     tag:       u8
+//!     class:     u16 // index of class
+//!     name_type: u16 // index of name and type
+//! }
+//!
+//! // tag = 15
+//! Constant::Method Handle {
+//!     tag:   u8
+//!     kind:  u8  // index of class
+//!     index: u16 // index of whatever `kind` requires
+//! }
+//!
+//! // tag = 18
+//! Constant::Invoke Dynamic {
+//!     tag:       u8
+//!     bootstrap: u8  // 0-based index into the bootstrap method table
+//!     name_type: u16 // index of name and type
+//! }
+//! ```
+
 use crate::raw::{ByteParser, *};
 
 pub type PoolIndex = usize;
@@ -45,7 +127,7 @@ pub enum MethodHandleKind {
 }
 
 impl MethodHandleKind {
-    fn from(ty: u8) -> ClassResult<MethodHandleKind> {
+    pub fn from(ty: u8) -> ClassResult<MethodHandleKind> {
         Ok(match ty {
             1 => MethodHandleKind::GetField,
             2 => MethodHandleKind::GetStatic,
@@ -119,7 +201,7 @@ impl Constant {
     }
 }
 
-fn parse_constant<'src>(input: &mut ByteParser<'src>) -> ClassResult<Constant> {
+pub fn parse_constant<'src>(input: &mut ByteParser<'src>) -> ClassResult<Constant> {
     Ok(match input.parse_u8()? {
         CONSTANT_UTF8 => {
             let len = input.parse_u16()? as usize;
@@ -172,9 +254,7 @@ fn parse_constant<'src>(input: &mut ByteParser<'src>) -> ClassResult<Constant> {
     })
 }
 
-pub(crate) fn parse_constant_pool<'src>(
-    input: &mut ByteParser<'src>,
-) -> ClassResult<Box<[Constant]>> {
+pub fn parse_constant_pool<'src>(input: &mut ByteParser<'src>) -> ClassResult<Box<[Constant]>> {
     let num_consts = match input.parse_u16()? as usize {
         0 => return Err(ClassError::ConstantPoolTooSmall),
         num => num - 1,
