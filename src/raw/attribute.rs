@@ -126,15 +126,25 @@ pub enum VerificationType {
     Object(PoolIndex),
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum StackMapFrame {
     Same,
+    Chop(usize),
+    SameExtended(usize),
     SameLocalsOneItem(VerificationType),
     SameLocalsOneItemExtended {
         delta: usize,
         stack: VerificationType,
     },
-    Chop(usize),
-    SameExtended(usize),
+    Append {
+        delta: usize,
+        locals: Box<[VerificationType]>,
+    },
+    Full {
+        delta: usize,
+        locals: Box<[VerificationType]>,
+        stack: Box<[VerificationType]>,
+    },
 }
 
 use crate::raw::{
@@ -196,7 +206,11 @@ pub enum Attribute {
     /// it must *not* have this atribute. This attribute must appear at most
     /// once per method info.
     Code(Code),
-    // StackMapTable(),
+
+    /// Contains information pertinent to the bytecode verifier, so that it can
+    /// do a one-pass analysis of the bytecode and make sure that everything
+    /// makes sense.
+    StackMapTable(Box<[StackMapFrame]>),
 }
 
 // ExceptionInfo {
@@ -253,6 +267,112 @@ fn parse_code(input: &mut ByteParser<'_>, pool: &[Constant]) -> ClassResult<Code
     })
 }
 
+// VerificationType {
+//     tag: u8,
+//     data: match tag {
+//         0 => Top,
+//         1 => Integer,
+//         2 => Float,
+//         3 => Double,
+//         4 => Long,
+//         5 => Null,
+//         6 => UninitializedThis,
+//         7 => Object {
+//             index: u16,
+//         },
+//         8 => Uninitialized {
+//             offset: u16,
+//         },
+//     }
+// }
+pub fn parse_verification_type(input: &mut ByteParser<'_>) -> ClassResult<VerificationType> {
+    Ok(match input.parse_u8()? {
+        0 => VerificationType::Top,
+        1 => VerificationType::Integer,
+        2 => VerificationType::Float,
+        3 => VerificationType::Double,
+        4 => VerificationType::Long,
+        5 => VerificationType::Null,
+        6 => VerificationType::UninitializedThis,
+        7 => VerificationType::Object(input.parse_u16()? as usize - 1),
+        8 => VerificationType::Uninitialized(input.parse_u16()? as usize),
+
+        other => return Err(ClassError::UnknownVerificationType(other)),
+    })
+}
+
+// StackMapFrame {
+//     frame_type: u8,
+//     frame: match frame_type {
+//         0..=63 => StackMapFrame::Same {}
+//         64..=127 => StackMapFrame::SameLocalsOneItem {
+//             stack: VerificationType
+//         }
+//         247 => StackMapFrame::SameLocalsOneItemExtended {
+//             offset_delta: u16
+//             stack: VerificationType
+//         }
+//         248..=250 => StackMapFrame::Chop {
+//             offset_delta: u16
+//         }
+//         251 => StackMapFrame::SameExtended {
+//             offset_delta: u16
+//         }
+//         252..=254 => StackMapFrame::Append {
+//             offset_delta: u16
+//             locals: [VerificationType; frame_type - 251]
+//         }
+//         255 => StackMapFrame::Full {
+//             offset_delta: u16
+//             locals_count: u16
+//             locals: [VerificationType; locals_count]
+//             stack_count: u16
+//             stack: [VerificationType; stack_count]
+//         }
+//     },
+// }
+pub fn parse_stack_map_frame(input: &mut ByteParser<'_>) -> ClassResult<StackMapFrame> {
+    let frame_type = input.parse_u8()?;
+
+    Ok(match frame_type {
+        0..=63 => StackMapFrame::Same,
+        64..=127 => StackMapFrame::SameLocalsOneItem(parse_verification_type(input)?),
+        247 => {
+            let delta = input.parse_u16()? as usize;
+            let stack = parse_verification_type(input)?;
+            StackMapFrame::SameLocalsOneItemExtended { delta, stack }
+        }
+        248..=250 => StackMapFrame::Chop(input.parse_u16()? as usize),
+        251 => StackMapFrame::SameExtended(input.parse_u16()? as usize),
+        252..=254 => {
+            let delta = input.parse_u16()? as usize;
+            let locals = input
+                // but why?
+                .seq(frame_type as usize - 251, parse_verification_type)?
+                .into();
+            StackMapFrame::Append { delta, locals }
+        }
+        255 => {
+            let delta = input.parse_u16()? as usize;
+            let locals_len = input.parse_u16()? as usize;
+            let locals = input.seq(locals_len, parse_verification_type)?.into();
+            let stack_len = input.parse_u16()? as usize;
+            let stack = input.seq(stack_len, parse_verification_type)?.into();
+            StackMapFrame::Full {
+                delta,
+                locals,
+                stack,
+            }
+        }
+        other => return Err(ClassError::UnknownStackMapFrameType(other)),
+    })
+}
+
+pub fn parse_stack_map_table(input: &mut ByteParser<'_>) -> ClassResult<Box<[StackMapFrame]>> {
+    let len = input.parse_u16()? as usize;
+    input.seq(len, parse_stack_map_frame).map(Into::into)
+}
+
 pub(crate) fn parse_attribute(
     input: &mut ByteParser<'_>,
     pool: &[Constant],
@@ -264,6 +384,7 @@ pub(crate) fn parse_attribute(
         Constant::StringData(data) => Ok(match &**data {
             b"ConstantValue" => Attribute::ConstantValue(input.parse_u16()? as usize),
             b"Code" => Attribute::Code(parse_code(input, pool)?),
+            b"StackMapTable" => Attribute::StackMapTable(parse_stack_map_table(input)?),
             _ => Attribute::Other(input.take(len)?.into()),
         }),
         _ => Err(ClassError::InvalidPoolType),

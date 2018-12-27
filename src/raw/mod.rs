@@ -23,6 +23,10 @@ pub enum ClassError {
     // Descriptor parse errors
     BadDescriptorType(u8),
 
+    // Attribute parse errors
+    UnknownVerificationType(u8),
+    UnknownStackMapFrameType(u8),
+
     // General errors
     InvalidPoolIndex,
     InvalidPoolType,
