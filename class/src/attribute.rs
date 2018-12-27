@@ -147,7 +147,7 @@ pub enum StackMapFrame {
     },
 }
 
-use crate::raw::{
+use crate::{
     constant::{Constant, PoolIndex},
     ByteParser, ClassError, ClassResult,
 };
@@ -211,6 +211,10 @@ pub enum Attribute {
     /// do a one-pass analysis of the bytecode and make sure that everything
     /// makes sense.
     StackMapTable(Box<[StackMapFrame]>),
+
+    /// Contains either a class, method, or field signature, depending on what
+    /// the attribute was declared on.
+    Signature(PoolIndex),
 }
 
 // ExceptionInfo {
@@ -385,6 +389,7 @@ pub(crate) fn parse_attribute(
             b"ConstantValue" => Attribute::ConstantValue(input.parse_u16()? as usize),
             b"Code" => Attribute::Code(parse_code(input, pool)?),
             b"StackMapTable" => Attribute::StackMapTable(parse_stack_map_table(input)?),
+            b"Signature" => Attribute::Signature(input.parse_u16()? as usize - 1),
             _ => Attribute::Other(input.take(len)?.into()),
         }),
         _ => Err(ClassError::InvalidPoolType),

@@ -6,7 +6,7 @@
 //!     attributes: [AttributeInfo; attributes_count],
 //! }
 
-use crate::raw::{
+use crate::{
     attribute::{parse_attribute, AttributeInfo},
     constant::{Constant, PoolIndex},
     field, ByteParser, ClassError, ClassResult,

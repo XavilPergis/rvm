@@ -30,7 +30,7 @@
 //! }
 //! ```
 
-use crate::raw::{
+use crate::{
     attribute::{parse_attribute, AttributeInfo},
     constant::{parse_constant_pool, Constant},
     field::{parse_field, Field},
@@ -54,7 +54,7 @@ pub const CLASS_MAGIC: &[u8; 4] = &[0xCA, 0xFE, 0xBA, 0xBE];
 pub fn parse_class(input: &mut ByteParser<'_>) -> ClassResult<Class> {
     input.tag(CLASS_MAGIC)?;
     let version = parse_version(input)?;
-    let constant_pool = parse_constant_pool(input)?;
+    let pool = parse_constant_pool(input)?;
     let access_flags = parse_access_flags(input)?;
     let this_class = input.parse_u16()? as usize - 1;
     let super_class = input.parse_u16()? as usize - 1;
@@ -65,19 +65,17 @@ pub fn parse_class(input: &mut ByteParser<'_>) -> ClassResult<Class> {
     })?;
 
     let fields_len = input.parse_u16()? as usize;
-    let fields = input.seq(fields_len, |input| parse_field(input, &constant_pool))?;
+    let fields = input.seq(fields_len, |input| parse_field(input, &pool))?;
 
     let methods_len = input.parse_u16()? as usize;
-    let methods = input.seq(methods_len, |input| parse_method(input, &constant_pool))?;
+    let methods = input.seq(methods_len, |input| parse_method(input, &pool))?;
 
     let attributes_len = input.parse_u16()? as usize;
-    let attributes = input.seq(attributes_len, |input| {
-        parse_attribute(input, &constant_pool)
-    })?;
+    let attributes = input.seq(attributes_len, |input| parse_attribute(input, &pool))?;
 
     Ok(Class {
         version,
-        constant_pool,
+        pool,
         access_flags,
         this_class,
         super_class,
@@ -201,7 +199,7 @@ pub struct Class {
 
     pub this_class: usize,
     pub super_class: usize,
-    pub constant_pool: Box<[Constant]>,
+    pub pool: Box<[Constant]>,
 
     pub interfaces: Box<[usize]>,
     pub fields: Box<[Field]>,

@@ -8,7 +8,7 @@
 //! }
 //! ```
 
-use crate::raw::{
+use crate::{
     attribute::{parse_attribute, AttributeInfo},
     constant::{Constant, PoolIndex},
     ByteParser, ClassError, ClassResult,

@@ -80,7 +80,7 @@
 //! }
 //! ```
 
-use crate::raw::{ByteParser, *};
+use crate::{ByteParser, ClassError, ClassResult};
 
 pub type PoolIndex = usize;
 
