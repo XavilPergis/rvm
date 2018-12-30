@@ -624,8 +624,8 @@ pub fn parse_instruction(
             JSR_W => Instruction::Jsr(input.parse_i32()?),
             RET => Instruction::Ret(input.parse_u8()?),
 
-            TABLESWITCH => Instruction::Tableswitch,
-            LOOKUPSWITCH => Instruction::Lookupswitch,
+            TABLESWITCH => panic!("Tableswitch"),
+            LOOKUPSWITCH => panic!("Lookupswitch"),
 
             IRETURN => Instruction::ReturnInt,
             LRETURN => Instruction::ReturnLong,
@@ -667,7 +667,7 @@ pub fn parse_instruction(
             MONITOREXIT => Instruction::MonitorExit,
             MULTIANEWARRAY => Instruction::NewArrayMultiRef(input.parse_u16()?, input.parse_u8()?),
 
-            WIDE => Instruction::Wide,
+            WIDE => Instruction::Wide(Box::new(parse_instruction(input)?)),
             BREAKPOINT => Instruction::Breakpoint,
             IMPDEP1 => Instruction::Impdep1,
             IMPDEP2 => Instruction::Impdep2,
@@ -677,6 +677,7 @@ pub fn parse_instruction(
     })
 }
 
+#[derive(Clone, Debug, PartialEq)]
 pub struct InstructionEntry {
     pub start: usize,
     pub tag: u8,
@@ -688,7 +689,6 @@ where
     F: FnMut(InstructionEntry),
 {
     let mut parser = ByteParser::new(bytes);
-
     while let Ok(entry) = parse_instruction(&mut parser) {
         func(entry);
     }
@@ -906,7 +906,7 @@ pub enum Instruction {
     InstanceOf(u16),
     MonitorEnter,
     MonitorExit,
-    Wide,
+    Wide(Box<InstructionEntry>),
 
     Breakpoint,
     Impdep1,

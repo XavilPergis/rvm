@@ -109,3 +109,8 @@ pub const OPCODE_DEFAULT: Style = bold(DEFAULT);
 pub const OPCODE_IMMEDIATE_INDEX: Style = fg(DEFAULT, Color::Yellow);
 pub const OPCODE_IMMEDIATE_BRANCH: Style = fg(DEFAULT, Color::Yellow);
 pub const OPCODE_IMMEDIATE_OTHER: Style = fg(DEFAULT, Color::Yellow);
+
+pub const FORWARD_BRANCH: Style = fg(DEFAULT, Color::Green);
+pub const BACKWARD_BRANCH: Style = fg(bold(DEFAULT), Color::Cyan);
+pub const FORWARD_JUMP: Style = fg(DEFAULT, Color::Yellow);
+pub const BACKWARD_JUMP: Style = fg(bold(DEFAULT), Color::Red);
