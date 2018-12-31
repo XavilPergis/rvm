@@ -408,7 +408,7 @@ fn print_code(code: &Code) {
             " {}/{}: {} ",
             start,
             index,
-            style.paint(code::INSTRUCTION_NAMES[tag as usize])
+            style.paint(code::instruction_name(tag))
         );
 
         match instruction {
@@ -519,7 +519,7 @@ fn print_code(code: &Code) {
         pad(1);
         print!("{} [shape=\"rect\" label=\"", id);
         for instruction in &instructions[range.start..range.end] {
-            print!("{}\\n", code::INSTRUCTION_NAMES[instruction.tag as usize]);
+            print!("{}\\n", code::instruction_name(instruction.tag));
         }
         print!(
             "{}",
@@ -626,6 +626,7 @@ fn parse_class(app: &App, buf: &[u8]) {
             print_method_descriptor(&method.descriptor, name);
             println!(";");
         }
+
         println!("}}");
     }
 }

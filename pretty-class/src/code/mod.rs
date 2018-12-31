@@ -1,6 +1,8 @@
 pub mod def;
 
-pub use self::def::{parse_instructions_into, Instruction, InstructionEntry, INSTRUCTION_NAMES};
+pub use self::def::{
+    instruction_name, parse_instructions_into, Instruction, InstructionEntry, INSTRUCTION_NAMES,
+};
 
 use petgraph::graph::DiGraph;
 use std::collections::{btree_map::BTreeMap, BTreeSet, HashMap};

@@ -1,8 +1,24 @@
 use class::{ByteParser, ParseError};
 
+pub fn instruction_name(tag: u8) -> &'static str {
+    match tag {
+        BREAKPOINT => "breakpoint",
+        IMPDEP1 => "impdep1",
+        IMPDEP2 => "impdep2",
+        _ => INSTRUCTION_NAMES
+            .get(tag as usize)
+            .cloned()
+            .unwrap_or("<unknown>"),
+    }
+}
+
 macro_rules! instructions {
     ($input:ident; $($opcode:expr => $name:ident, $display:expr, $parse:expr;)*) => {
         $(pub const $name: u8 = $opcode;)*
+
+        pub const BREAKPOINT: u8 = 0xca;
+        pub const IMPDEP1: u8 = 0xfe;
+        pub const IMPDEP2: u8 = 0xff;
 
         /// Map of instruction tag -> instruction name.
         pub static INSTRUCTION_NAMES: &[&str] = &[
@@ -20,6 +36,11 @@ macro_rules! instructions {
                 tag,
                 instruction: match tag {
                     $($name => $parse,)*
+
+                    BREAKPOINT => Breakpoint,
+                    IMPDEP1 => Impdep1,
+                    IMPDEP2 => Impdep2,
+
                     other => return Err(InstructionParseError::UnknownOpcode(other)),
                 }
             })
@@ -219,14 +240,14 @@ instructions! {
     0xba => INVOKEDYNAMIC, "invokedynamic", InvokeInterface(input.parse_u16()?, input.parse_u8()?);
     0xbb => NEW, "new", New(input.parse_u16()?);
     0xbc => NEWARRAY, "newarray", NewArrayPrimitive(match input.parse_u8()? {
-        0 => ArrayPrimitiveType::Int,
-        1 => ArrayPrimitiveType::Long,
         4 => ArrayPrimitiveType::Boolean,
         5 => ArrayPrimitiveType::Char,
         6 => ArrayPrimitiveType::Float,
         7 => ArrayPrimitiveType::Double,
         8 => ArrayPrimitiveType::Byte,
         9 => ArrayPrimitiveType::Short,
+        10 => ArrayPrimitiveType::Int,
+        11 => ArrayPrimitiveType::Long,
         k => return Err(InstructionParseError::InvalidPrimitiveType(k)),
     });
     0xbd => ANEWARRAY, "anewarray", NewArrayRef(input.parse_u16()?);
