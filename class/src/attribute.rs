@@ -298,7 +298,7 @@ pub fn parse_verification_type(input: &mut ByteParser<'_>) -> ClassResult<Verifi
         4 => VerificationType::Long,
         5 => VerificationType::Null,
         6 => VerificationType::UninitializedThis,
-        7 => VerificationType::Object(input.parse_u16()? as usize - 1),
+        7 => VerificationType::Object(input.parse_u16()? as usize),
         8 => VerificationType::Uninitialized(input.parse_u16()? as usize),
 
         other => return Err(ClassError::UnknownVerificationType(other)),
@@ -381,7 +381,7 @@ pub(crate) fn parse_attribute(
     input: &mut ByteParser<'_>,
     pool: &[Constant],
 ) -> ClassResult<AttributeInfo> {
-    let index = input.parse_u16()? as usize - 1;
+    let index = input.parse_u16()? as usize;
     let len = input.parse_u32()? as usize;
 
     let attr = match &pool[index] {
@@ -389,7 +389,7 @@ pub(crate) fn parse_attribute(
             b"ConstantValue" => Attribute::ConstantValue(input.parse_u16()? as usize),
             b"Code" => Attribute::Code(parse_code(input, pool)?),
             b"StackMapTable" => Attribute::StackMapTable(parse_stack_map_table(input)?),
-            b"Signature" => Attribute::Signature(input.parse_u16()? as usize - 1),
+            b"Signature" => Attribute::Signature(input.parse_u16()? as usize),
             _ => Attribute::Other(input.take(len)?.into()),
         }),
         _ => Err(ClassError::InvalidPoolType),

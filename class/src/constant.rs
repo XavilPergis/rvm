@@ -212,42 +212,40 @@ pub fn parse_constant<'src>(input: &mut ByteParser<'src>) -> ClassResult<Constan
         CONSTANT_LONG => input.parse_i64().map(Constant::Long)?,
         CONSTANT_DOUBLE => input.parse_f64().map(Constant::Double)?,
 
-        CONSTANT_CLASS => input.parse_u16().map(|x| Constant::Class(x as usize - 1))?,
-        CONSTANT_STRING => input
-            .parse_u16()
-            .map(|x| Constant::String(x as usize - 1))?,
+        CONSTANT_CLASS => input.parse_u16().map(|x| Constant::Class(x as usize))?,
+        CONSTANT_STRING => input.parse_u16().map(|x| Constant::String(x as usize))?,
         CONSTANT_METHOD_TYPE => input
             .parse_u16()
-            .map(|x| Constant::MethodType(x as usize - 1))?,
+            .map(|x| Constant::MethodType(x as usize))?,
 
         CONSTANT_FIELD_REF => Constant::FieldRef {
-            class: input.parse_u16()? as usize - 1,
-            name_and_type: input.parse_u16()? as usize - 1,
+            class: input.parse_u16()? as usize,
+            name_and_type: input.parse_u16()? as usize,
         },
 
         CONSTANT_METHOD_REF => Constant::MethodRef {
-            class: input.parse_u16()? as usize - 1,
-            name_and_type: input.parse_u16()? as usize - 1,
+            class: input.parse_u16()? as usize,
+            name_and_type: input.parse_u16()? as usize,
         },
 
         CONSTANT_INTERFACE_METHOD_REF => Constant::InterfaceMethodRef {
-            class: input.parse_u16()? as usize - 1,
-            name_and_type: input.parse_u16()? as usize - 1,
+            class: input.parse_u16()? as usize,
+            name_and_type: input.parse_u16()? as usize,
         },
 
         CONSTANT_NAME_AND_TYPE => Constant::NameAndType {
-            name: input.parse_u16()? as usize - 1,
-            ty: input.parse_u16()? as usize - 1,
+            name: input.parse_u16()? as usize,
+            ty: input.parse_u16()? as usize,
         },
 
         CONSTANT_METHOD_HANDLE => Constant::MethodHandle {
             kind: MethodHandleKind::from(input.parse_u8()?)?,
-            index: input.parse_u16()? as usize - 1,
+            index: input.parse_u16()? as usize,
         },
 
         CONSTANT_INVOKE_DYNAMIC => Constant::InvokeDynamic {
             bootstrap_method_attr: input.parse_u16()? as usize,
-            name_and_type: input.parse_u16()? as usize - 1,
+            name_and_type: input.parse_u16()? as usize,
         },
 
         other => return Err(ClassError::UnknownConstantTag(other)),
@@ -261,17 +259,21 @@ pub fn parse_constant_pool<'src>(input: &mut ByteParser<'src>) -> ClassResult<Bo
     };
 
     let mut consts = Vec::with_capacity(num_consts);
+
+    // First slot is unused. Everything uses 1-based indices into the pool.
+    consts.push(Constant::Nothing);
+
     let mut cur = 0;
     while cur < num_consts {
         let constant = parse_constant(input)?;
-        let is_64_bit = match constant {
+        let is_double_wide = match constant {
             Constant::Long(_) | Constant::Double(_) => true,
             _ => false,
         };
 
         cur += 1;
         consts.push(constant);
-        if is_64_bit {
+        if is_double_wide {
             cur += 1;
             consts.push(Constant::Nothing);
         }

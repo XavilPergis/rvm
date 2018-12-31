@@ -56,12 +56,12 @@ pub fn parse_class(input: &mut ByteParser<'_>) -> ClassResult<Class> {
     let version = parse_version(input)?;
     let pool = parse_constant_pool(input)?;
     let access_flags = parse_access_flags(input)?;
-    let this_class = input.parse_u16()? as usize - 1;
-    let super_class = input.parse_u16()? as usize - 1;
+    let this_class = input.parse_u16()? as usize;
+    let super_class = input.parse_u16()? as usize;
 
     let interfaces_len = input.parse_u16()? as usize;
     let interfaces = input.seq(interfaces_len, |input| {
-        input.parse_u16().map(|x| x as usize - 1)
+        input.parse_u16().map(|x| x as usize)
     })?;
 
     let fields_len = input.parse_u16()? as usize;

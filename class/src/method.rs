@@ -180,8 +180,8 @@ pub fn parse_method_descriptor(input: &mut ByteParser<'_>) -> ClassResult<Descri
 
 pub fn parse_method(input: &mut ByteParser<'_>, pool: &[Constant]) -> ClassResult<Method> {
     let access = Access(input.parse_u16()?);
-    let name = input.parse_u16()? as usize - 1;
-    let descriptor_index = input.parse_u16()? as usize - 1;
+    let name = input.parse_u16()? as usize;
+    let descriptor_index = input.parse_u16()? as usize;
     let descriptor = match pool[descriptor_index].as_string_data() {
         Some(data) => parse_method_descriptor(&mut ByteParser::new(data)),
         _ => Err(ClassError::InvalidPoolType),

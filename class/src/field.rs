@@ -204,9 +204,9 @@ pub(crate) fn parse_field_descriptor_terminal(
 
 pub(crate) fn parse_field(input: &mut ByteParser<'_>, pool: &[Constant]) -> ClassResult<Field> {
     let access = Access(input.parse_u16()?);
-    let name = input.parse_u16()? as usize - 1;
+    let name = input.parse_u16()? as usize;
 
-    let descriptor_index = input.parse_u16()? as usize - 1;
+    let descriptor_index = input.parse_u16()? as usize;
     let descriptor = match pool[descriptor_index].as_string_data() {
         Some(data) => parse_field_descriptor(&mut ByteParser::new(data)),
         _ => Err(ClassError::InvalidPoolType),
