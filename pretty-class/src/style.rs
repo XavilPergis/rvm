@@ -16,91 +16,107 @@ pub const DEFAULT: Style = Style {
 
 lazy_static::lazy_static! {
     pub static ref STYLE_MAP: HashMap<String, Style> = {
-        let entries = &[
-            ("comment", StyleNode::Base(Color::Cyan.normal())),
-            ("extends", StyleNode::Base(Color::Yellow.bold())),
+        macro_rules! entries {
+            ($($name:expr => $rest:tt $val:expr,)*) => {
+                &[
+                    $(($name, entries!($rest $val)),)*
+                ]
+            };
 
-            ("type", StyleNode::Base(Color::Green.normal())),
-            ("type.object", StyleNode::Inherit(Overrides::default().bold(true))),
-            ("type.primitive", StyleNode::Inherit(Overrides::default())),
-            ("type.primitive.byte", StyleNode::Inherit(Overrides::default())),
-            ("type.primitive.char", StyleNode::Inherit(Overrides::default())),
-            ("type.primitive.double", StyleNode::Inherit(Overrides::default())),
-            ("type.primitive.float", StyleNode::Inherit(Overrides::default())),
-            ("type.primitive.int", StyleNode::Inherit(Overrides::default())),
-            ("type.primitive.long", StyleNode::Inherit(Overrides::default())),
-            ("type.primitive.short", StyleNode::Inherit(Overrides::default())),
-            ("type.primitive.boolean", StyleNode::Inherit(Overrides::default())),
-            ("type.primitive.void", StyleNode::Inherit(Overrides::default())),
+            (base $style:expr) => {
+                StyleNode::Base($style)
+            };
 
-            ("pool.index", StyleNode::Base(Color::Cyan.bold())),
+            (inherit $overrides:expr) => {
+                StyleNode::Inherit($overrides)
+            };
+        }
 
-            ("pool.val", StyleNode::Base(DEFAULT)),
-            ("pool.val.int", StyleNode::Inherit(Overrides::default())),
-            ("pool.val.float", StyleNode::Inherit(Overrides::default())),
-            ("pool.val.long", StyleNode::Inherit(Overrides::default())),
-            ("pool.val.double", StyleNode::Inherit(Overrides::default())),
-            ("pool.val.string", StyleNode::Base(Color::Green.normal())),
+        let entries = entries! {
+            "comment" => base Color::Cyan.normal(),
+            "extends" => base Color::Yellow.bold(),
 
-            ("pool.ref", StyleNode::Base(DEFAULT)),
-            ("pool.ref.member", StyleNode::Base(Color::Yellow.normal())),
-            ("pool.ref.member.field", StyleNode::Inherit(Overrides::default())),
-            ("pool.ref.member.method", StyleNode::Inherit(Overrides::default())),
-            ("pool.ref.member.interface_method", StyleNode::Inherit(Overrides::default())),
-            ("pool.ref.string", StyleNode::Inherit(Overrides::default())),
-            ("pool.ref.class", StyleNode::Inherit(Overrides::default())),
-            ("pool.ref.name_and_type", StyleNode::Inherit(Overrides::default())),
-            ("pool.ref.method_type", StyleNode::Inherit(Overrides::default())),
-            ("pool.ref.method_handle", StyleNode::Inherit(Overrides::default())),
-            ("pool.ref.invoke_dynamic", StyleNode::Inherit(Overrides::default())),
+            "type" => base Color::Green.normal(),
+            "type.object" => inherit Overrides::default().bold(true),
+            "type.primitive" => inherit Overrides::default(),
+            "type.primitive.byte" => inherit Overrides::default(),
+            "type.primitive.char" => inherit Overrides::default(),
+            "type.primitive.double" => inherit Overrides::default(),
+            "type.primitive.float" => inherit Overrides::default(),
+            "type.primitive.int" => inherit Overrides::default(),
+            "type.primitive.long" => inherit Overrides::default(),
+            "type.primitive.short" => inherit Overrides::default(),
+            "type.primitive.boolean" => inherit Overrides::default(),
+            "type.primitive.void" => inherit Overrides::default(),
 
-            ("access.visibility", StyleNode::Base(Color::Yellow.normal())),
-            ("access.visibility.public", StyleNode::Inherit(Overrides::default())),
-            ("access.visibility.protected", StyleNode::Inherit(Overrides::default())),
-            ("access.visibility.private", StyleNode::Inherit(Overrides::default())),
+            "pool.index" => base Color::Cyan.bold(),
 
-            ("access.other", StyleNode::Base(Color::Yellow.normal())),
-            ("access.other.final", StyleNode::Inherit(Overrides::default())),
-            ("access.other.static", StyleNode::Inherit(Overrides::default())),
-            ("access.other.abstract", StyleNode::Inherit(Overrides::default())),
+            "pool.val" => base DEFAULT,
+            "pool.val.int" => inherit Overrides::default(),
+            "pool.val.float" => inherit Overrides::default(),
+            "pool.val.long" => inherit Overrides::default(),
+            "pool.val.double" => inherit Overrides::default(),
+            "pool.val.string" => base Color::Green.normal(),
 
-            ("access.field.volatile", StyleNode::Inherit(Overrides::default())),
-            ("access.field.transient", StyleNode::Inherit(Overrides::default())),
+            "pool.ref" => base DEFAULT,
+            "pool.ref.member" => base Color::Yellow.normal(),
+            "pool.ref.member.field" => inherit Overrides::default(),
+            "pool.ref.member.method" => inherit Overrides::default(),
+            "pool.ref.member.interface_method" => inherit Overrides::default(),
+            "pool.ref.string" => inherit Overrides::default(),
+            "pool.ref.class" => inherit Overrides::default(),
+            "pool.ref.name_and_type" => inherit Overrides::default(),
+            "pool.ref.method_type" => inherit Overrides::default(),
+            "pool.ref.method_handle" => inherit Overrides::default(),
+            "pool.ref.invoke_dynamic" => inherit Overrides::default(),
 
-            ("access.method.synchronized", StyleNode::Inherit(Overrides::default())),
-            ("access.method.strictfp", StyleNode::Inherit(Overrides::default())),
-            ("access.method.native", StyleNode::Inherit(Overrides::default())),
+            // "access.visibility" => base Color::Yellow.normal(),
+            "access.visibility.public" => inherit Overrides::default(),
+            "access.visibility.protected" => inherit Overrides::default(),
+            "access.visibility.private" => inherit Overrides::default(),
 
-            ("access.class", StyleNode::Base(Color::Blue.normal())),
-            ("access.class.enum", StyleNode::Inherit(Overrides::default())),
-            ("access.class.interface", StyleNode::Inherit(Overrides::default())),
-            ("access.class.class", StyleNode::Inherit(Overrides::default())),
-            ("access.class.annotation", StyleNode::Inherit(Overrides::default())),
+            "access" => base Color::Yellow.normal(),
+            "access.other.final" => inherit Overrides::default(),
+            "access.other.static" => inherit Overrides::default(),
+            "access.other.abstract" => inherit Overrides::default(),
 
-            ("flow.branch.forward", StyleNode::Base(Color::Green.normal())),
-            ("flow.branch.backward", StyleNode::Base(Color::Cyan.bold())),
-            ("flow.jump.forward", StyleNode::Base(Color::Yellow.normal())),
-            ("flow.jump.backward", StyleNode::Base(Color::Red.bold())),
+            "access.field.volatile" => inherit Overrides::default(),
+            "access.field.transient" => inherit Overrides::default(),
 
-            ("opcode.type", StyleNode::Base(Color::Cyan.normal())),
-            ("opcode.type.load", StyleNode::Base(Color::Cyan.normal())),
-            ("opcode.type.load.const", StyleNode::Inherit(Overrides::default())),
-            ("opcode.type.store", StyleNode::Base(Color::Cyan.normal())),
+            "access.method.synchronized" => inherit Overrides::default(),
+            "access.method.strictfp" => inherit Overrides::default(),
+            "access.method.native" => inherit Overrides::default(),
 
-            ("opcode.type.stack", StyleNode::Base(Color::Yellow.normal())),
-            ("opcode.type.object", StyleNode::Base(Color::Green.normal())),
-            ("opcode.type.arith", StyleNode::Base(Color::Green.normal())),
-            ("opcode.type.logic", StyleNode::Base(Color::Green.normal())),
-            ("opcode.type.conversion", StyleNode::Base(Color::Green.normal())),
+            "access.class" => base Color::Blue.normal(),
+            "access.class.enum" => inherit Overrides::default(),
+            "access.class.interface" => inherit Overrides::default(),
+            "access.class.class" => inherit Overrides::default(),
+            "access.class.annotation" => inherit Overrides::default(),
 
-            ("opcode.type.flow", StyleNode::Base(Color::Yellow.normal().underline())),
-            ("opcode.type.flow.invocation", StyleNode::Inherit(Overrides::default().underline(false))),
+            "flow.branch.forward" => base Color::Green.normal(),
+            "flow.branch.backward" => base Color::Cyan.bold(),
+            "flow.jump.forward" => base Color::Yellow.normal(),
+            "flow.jump.backward" => base Color::Red.bold(),
 
-            ("opcode.immediate", StyleNode::Base(Color::Yellow.normal())),
-            ("opcode.immediate.index", StyleNode::Inherit(Overrides::default())),
-            ("opcode.immediate.branch", StyleNode::Inherit(Overrides::default())),
-            ("opcode.immediate.other", StyleNode::Inherit(Overrides::default())),
-        ];
+            "opcode.type" => base Color::Cyan.normal(),
+            "opcode.type.load" => base Color::Cyan.normal(),
+            "opcode.type.load.const" => inherit Overrides::default(),
+            "opcode.type.store" => base Color::Cyan.normal(),
+
+            "opcode.type.stack" => base Color::Yellow.normal(),
+            "opcode.type.object" => base Color::Green.normal(),
+            "opcode.type.arith" => base Color::Green.normal(),
+            "opcode.type.logic" => base Color::Green.normal(),
+            "opcode.type.conversion" => base Color::Green.normal(),
+
+            "opcode.type.flow" => base Color::Yellow.normal().underline(),
+            "opcode.type.flow.invocation" => inherit Overrides::default().underline(false),
+
+            "opcode.immediate" => base Color::Yellow.normal(),
+            "opcode.immediate.index" => inherit Overrides::default(),
+            "opcode.immediate.branch" => inherit Overrides::default(),
+            "opcode.immediate.other" => inherit Overrides::default(),
+        };
 
         let entries = entries.into_iter().map(|&(name, node)| (Cow::from(name), node)).collect::<HashMap<_, _>>();
         let mut resolved = HashMap::new();
@@ -114,11 +130,15 @@ lazy_static::lazy_static! {
 }
 
 fn compute_node(ctx: &HashMap<Cow<'_, str>, StyleNode>, name: &str) -> Option<Style> {
-    match *ctx.get(name)? {
-        StyleNode::Base(style) => Some(style),
-        StyleNode::Inherit(overrides) => {
+    match ctx.get(name).cloned() {
+        Some(StyleNode::Base(style)) => Some(style),
+        Some(StyleNode::Inherit(overrides)) => {
             let (pos, _) = name.rmatch_indices(".").next()?;
             compute_node(ctx, &name[..pos]).map(|style| overrides.apply(style))
+        }
+        None => {
+            let (pos, _) = name.rmatch_indices(".").next()?;
+            compute_node(ctx, &name[..pos])
         }
     }
 }
