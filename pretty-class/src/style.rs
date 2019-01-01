@@ -1,4 +1,5 @@
 use ansi_term::{Color, Style};
+use std::{borrow::Cow, collections::HashMap};
 
 pub const DEFAULT: Style = Style {
     foreground: None,
@@ -13,104 +14,176 @@ pub const DEFAULT: Style = Style {
     is_strikethrough: false,
 };
 
-const fn fg(style: Style, color: Color) -> Style {
-    Style {
-        foreground: Some(color),
-        ..style
+lazy_static::lazy_static! {
+    pub static ref STYLE_MAP: HashMap<String, Style> = {
+        let entries = &[
+            ("comment", StyleNode::Base(Color::Cyan.normal())),
+            ("extends", StyleNode::Base(Color::Yellow.bold())),
+
+            ("type", StyleNode::Base(Color::Green.normal())),
+            ("type.object", StyleNode::Inherit(Overrides::default().bold(true))),
+            ("type.primitive", StyleNode::Inherit(Overrides::default())),
+            ("type.primitive.byte", StyleNode::Inherit(Overrides::default())),
+            ("type.primitive.char", StyleNode::Inherit(Overrides::default())),
+            ("type.primitive.double", StyleNode::Inherit(Overrides::default())),
+            ("type.primitive.float", StyleNode::Inherit(Overrides::default())),
+            ("type.primitive.int", StyleNode::Inherit(Overrides::default())),
+            ("type.primitive.long", StyleNode::Inherit(Overrides::default())),
+            ("type.primitive.short", StyleNode::Inherit(Overrides::default())),
+            ("type.primitive.boolean", StyleNode::Inherit(Overrides::default())),
+            ("type.primitive.void", StyleNode::Inherit(Overrides::default())),
+
+            ("pool.index", StyleNode::Base(Color::Cyan.bold())),
+
+            ("pool.val", StyleNode::Base(DEFAULT)),
+            ("pool.val.int", StyleNode::Inherit(Overrides::default())),
+            ("pool.val.float", StyleNode::Inherit(Overrides::default())),
+            ("pool.val.long", StyleNode::Inherit(Overrides::default())),
+            ("pool.val.double", StyleNode::Inherit(Overrides::default())),
+            ("pool.val.string", StyleNode::Base(Color::Green.normal())),
+
+            ("pool.ref", StyleNode::Base(DEFAULT)),
+            ("pool.ref.member", StyleNode::Base(Color::Yellow.normal())),
+            ("pool.ref.member.field", StyleNode::Inherit(Overrides::default())),
+            ("pool.ref.member.method", StyleNode::Inherit(Overrides::default())),
+            ("pool.ref.member.interface_method", StyleNode::Inherit(Overrides::default())),
+            ("pool.ref.string", StyleNode::Inherit(Overrides::default())),
+            ("pool.ref.class", StyleNode::Inherit(Overrides::default())),
+            ("pool.ref.name_and_type", StyleNode::Inherit(Overrides::default())),
+            ("pool.ref.method_type", StyleNode::Inherit(Overrides::default())),
+            ("pool.ref.method_handle", StyleNode::Inherit(Overrides::default())),
+            ("pool.ref.invoke_dynamic", StyleNode::Inherit(Overrides::default())),
+
+            ("access.visibility", StyleNode::Base(Color::Yellow.normal())),
+            ("access.visibility.public", StyleNode::Inherit(Overrides::default())),
+            ("access.visibility.protected", StyleNode::Inherit(Overrides::default())),
+            ("access.visibility.private", StyleNode::Inherit(Overrides::default())),
+
+            ("access.other", StyleNode::Base(Color::Yellow.normal())),
+            ("access.other.final", StyleNode::Inherit(Overrides::default())),
+            ("access.other.static", StyleNode::Inherit(Overrides::default())),
+            ("access.other.abstract", StyleNode::Inherit(Overrides::default())),
+
+            ("access.field.volatile", StyleNode::Inherit(Overrides::default())),
+            ("access.field.transient", StyleNode::Inherit(Overrides::default())),
+
+            ("access.method.synchronized", StyleNode::Inherit(Overrides::default())),
+            ("access.method.strictfp", StyleNode::Inherit(Overrides::default())),
+            ("access.method.native", StyleNode::Inherit(Overrides::default())),
+
+            ("access.class", StyleNode::Base(Color::Blue.normal())),
+            ("access.class.enum", StyleNode::Inherit(Overrides::default())),
+            ("access.class.interface", StyleNode::Inherit(Overrides::default())),
+            ("access.class.class", StyleNode::Inherit(Overrides::default())),
+            ("access.class.annotation", StyleNode::Inherit(Overrides::default())),
+
+            ("flow.branch.forward", StyleNode::Base(Color::Green.normal())),
+            ("flow.branch.backward", StyleNode::Base(Color::Cyan.bold())),
+            ("flow.jump.forward", StyleNode::Base(Color::Yellow.normal())),
+            ("flow.jump.backward", StyleNode::Base(Color::Red.bold())),
+
+            ("opcode.type", StyleNode::Base(Color::Cyan.normal())),
+            ("opcode.type.load", StyleNode::Base(Color::Cyan.normal())),
+            ("opcode.type.load.const", StyleNode::Inherit(Overrides::default())),
+            ("opcode.type.store", StyleNode::Base(Color::Cyan.normal())),
+
+            ("opcode.type.stack", StyleNode::Base(Color::Yellow.normal())),
+            ("opcode.type.object", StyleNode::Base(Color::Green.normal())),
+            ("opcode.type.arith", StyleNode::Base(Color::Green.normal())),
+            ("opcode.type.logic", StyleNode::Base(Color::Green.normal())),
+            ("opcode.type.conversion", StyleNode::Base(Color::Green.normal())),
+
+            ("opcode.type.flow", StyleNode::Base(Color::Yellow.normal().underline())),
+            ("opcode.type.flow.invocation", StyleNode::Inherit(Overrides::default().underline(false))),
+
+            ("opcode.immediate", StyleNode::Base(Color::Yellow.normal())),
+            ("opcode.immediate.index", StyleNode::Inherit(Overrides::default())),
+            ("opcode.immediate.branch", StyleNode::Inherit(Overrides::default())),
+            ("opcode.immediate.other", StyleNode::Inherit(Overrides::default())),
+        ];
+
+        let entries = entries.into_iter().map(|&(name, node)| (Cow::from(name), node)).collect::<HashMap<_, _>>();
+        let mut resolved = HashMap::new();
+
+        for (path, _) in &entries {
+            resolved.insert(path.clone().into(), compute_node(&entries, path).unwrap_or(DEFAULT));
+        }
+
+        resolved
+    };
+}
+
+fn compute_node(ctx: &HashMap<Cow<'_, str>, StyleNode>, name: &str) -> Option<Style> {
+    match *ctx.get(name)? {
+        StyleNode::Base(style) => Some(style),
+        StyleNode::Inherit(overrides) => {
+            let (pos, _) = name.rmatch_indices(".").next()?;
+            compute_node(ctx, &name[..pos]).map(|style| overrides.apply(style))
+        }
     }
 }
 
-const fn bold(style: Style) -> Style {
-    Style {
-        is_bold: true,
-        ..style
+#[derive(Copy, Clone, Debug, PartialEq, Default)]
+pub struct Overrides {
+    pub foreground: Option<Option<Color>>,
+    pub background: Option<Option<Color>>,
+    pub is_bold: Option<bool>,
+    pub is_dimmed: Option<bool>,
+    pub is_italic: Option<bool>,
+    pub is_underline: Option<bool>,
+    pub is_blink: Option<bool>,
+    pub is_reverse: Option<bool>,
+    pub is_hidden: Option<bool>,
+    pub is_strikethrough: Option<bool>,
+}
+
+impl Overrides {
+    pub fn fg(color: Option<Color>) -> Self {
+        Overrides {
+            foreground: Some(color),
+            ..Default::default()
+        }
+    }
+
+    pub fn bold(self, bold: bool) -> Self {
+        Overrides {
+            is_bold: Some(bold),
+            ..self
+        }
+    }
+
+    pub fn dimmed(self, dimmed: bool) -> Self {
+        Overrides {
+            is_dimmed: Some(dimmed),
+            ..self
+        }
+    }
+
+    pub fn underline(self, underline: bool) -> Self {
+        Overrides {
+            is_underline: Some(underline),
+            ..self
+        }
+    }
+
+    fn apply(self, style: Style) -> Style {
+        Style {
+            foreground: self.foreground.unwrap_or(style.foreground),
+            background: self.background.unwrap_or(style.background),
+            is_bold: self.is_bold.unwrap_or(style.is_bold),
+            is_dimmed: self.is_dimmed.unwrap_or(style.is_dimmed),
+            is_italic: self.is_italic.unwrap_or(style.is_italic),
+            is_underline: self.is_underline.unwrap_or(style.is_underline),
+            is_blink: self.is_blink.unwrap_or(style.is_blink),
+            is_reverse: self.is_reverse.unwrap_or(style.is_reverse),
+            is_hidden: self.is_hidden.unwrap_or(style.is_hidden),
+            is_strikethrough: self.is_strikethrough.unwrap_or(style.is_strikethrough),
+        }
     }
 }
 
-const fn underline(style: Style) -> Style {
-    Style {
-        is_underline: true,
-        ..style
-    }
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum StyleNode {
+    Base(Style),
+    Inherit(Overrides),
 }
-
-pub const DATA_GROUP: Style = bold(fg(DEFAULT, Color::Green));
-pub const INT: Style = DATA_GROUP;
-pub const LONG: Style = DATA_GROUP;
-pub const FLOAT: Style = DATA_GROUP;
-pub const DOUBLE: Style = DATA_GROUP;
-pub const STRING: Style = DEFAULT;
-
-// Invocation and field metadata
-pub const CLASS_REFERENCE_GROUP: Style = fg(bold(DEFAULT), Color::Yellow);
-pub const FIELD_REF: Style = CLASS_REFERENCE_GROUP;
-pub const METHOD_REF: Style = CLASS_REFERENCE_GROUP;
-pub const INTERFACE_METHOD_REF: Style = CLASS_REFERENCE_GROUP;
-pub const STRING_REF: Style = CLASS_REFERENCE_GROUP;
-pub const CLASS_REF: Style = CLASS_REFERENCE_GROUP;
-
-pub const NAME_AND_TYPE: Style = fg(bold(DEFAULT), Color::Blue);
-pub const METHOD_TYPE: Style = fg(DEFAULT, Color::Purple);
-pub const METHOD_HANDLE: Style = fg(DEFAULT, Color::Purple);
-pub const INVOKE_DYNAMIC: Style = fg(DEFAULT, Color::Purple);
-
-pub const ACCESS_VISIBILITY_GROUP: Style = fg(DEFAULT, Color::Yellow);
-pub const ACCESS_PUBLIC: Style = ACCESS_VISIBILITY_GROUP;
-pub const ACCESS_PROTECTED: Style = ACCESS_VISIBILITY_GROUP;
-pub const ACCESS_PRIVATE: Style = ACCESS_VISIBILITY_GROUP;
-
-pub const ACCESS_OTHER_QUALIFIER_GROUP: Style = fg(DEFAULT, Color::Yellow);
-// Method and field
-pub const ACCESS_FINAL: Style = ACCESS_OTHER_QUALIFIER_GROUP;
-pub const ACCESS_STATIC: Style = ACCESS_OTHER_QUALIFIER_GROUP;
-pub const ACCESS_ABSTRACT: Style = ACCESS_OTHER_QUALIFIER_GROUP;
-
-// Field only
-pub const ACCESS_VOLATILE: Style = ACCESS_OTHER_QUALIFIER_GROUP;
-pub const ACCESS_TRANSIENT: Style = ACCESS_OTHER_QUALIFIER_GROUP;
-
-// Method only
-pub const ACCESS_SYNCHRONIZED: Style = ACCESS_OTHER_QUALIFIER_GROUP;
-pub const ACCESS_STRICTFP: Style = ACCESS_OTHER_QUALIFIER_GROUP;
-pub const ACCESS_NATIVE: Style = ACCESS_OTHER_QUALIFIER_GROUP;
-
-pub const ACCESS_CLASS_TYPE: Style = fg(bold(DEFAULT), Color::Blue);
-pub const ACCESS_ENUM: Style = ACCESS_CLASS_TYPE;
-pub const ACCESS_INTERFACE: Style = ACCESS_CLASS_TYPE;
-pub const ACCESS_CLASS: Style = ACCESS_CLASS_TYPE;
-pub const ACCESS_ANNOTATION: Style = ACCESS_CLASS_TYPE;
-
-pub const COMMENT: Style = fg(DEFAULT, Color::Cyan);
-pub const INDEX: Style = fg(bold(DEFAULT), Color::Cyan);
-
-pub const PRIMITIVE_TYPE: Style = fg(DEFAULT, Color::Green);
-pub const CLASS_NAME: Style = bold(PRIMITIVE_TYPE);
-pub const EXTENDS: Style = fg(bold(DEFAULT), Color::Yellow);
-
-pub const OPCODE_LOAD_STORE: Style = fg(DEFAULT, Color::Cyan);
-pub const OPCODE_OPERAND_STACK_MANAGEMENT: Style = fg(DEFAULT, Color::Yellow);
-
-pub const OPCODE_OBJECT_MANIPULATION: Style = fg(DEFAULT, Color::Green);
-pub const OPCODE_ARITH_LOGIC: Style = fg(DEFAULT, Color::Green);
-pub const OPCODE_TYPE_CONVERSION: Style = fg(DEFAULT, Color::Green);
-
-pub const OPCODE_CONTROL_FLOW: Style = fg(DEFAULT, Color::Yellow);
-pub const OPCODE_INVOCATION_RETURN: Style = fg(underline(DEFAULT), Color::Yellow);
-
-// Load and store (e.g. aload_0, istore)
-// Arithmetic and logic (e.g. ladd, fcmpl)
-// Type conversion (e.g. i2b, d2i)
-// Object creation and manipulation (new, putfield)
-// Operand stack management (e.g. swap, dup2)
-// Control transfer (e.g. ifeq, goto)
-// Method invocation and return (e.g. invokespecial, areturn)
-
-pub const OPCODE_DEFAULT: Style = bold(DEFAULT);
-pub const OPCODE_IMMEDIATE_INDEX: Style = fg(DEFAULT, Color::Yellow);
-pub const OPCODE_IMMEDIATE_BRANCH: Style = fg(DEFAULT, Color::Yellow);
-pub const OPCODE_IMMEDIATE_OTHER: Style = fg(DEFAULT, Color::Yellow);
-
-pub const FORWARD_BRANCH: Style = fg(DEFAULT, Color::Green);
-pub const BACKWARD_BRANCH: Style = fg(bold(DEFAULT), Color::Cyan);
-pub const FORWARD_JUMP: Style = fg(DEFAULT, Color::Yellow);
-pub const BACKWARD_JUMP: Style = fg(bold(DEFAULT), Color::Red);

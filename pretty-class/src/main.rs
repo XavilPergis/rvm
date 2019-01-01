@@ -1,10 +1,12 @@
-use crate::code::{def::InstructionEntry, Range};
+use crate::{
+    code::{def::InstructionEntry, Range},
+    style::STYLE_MAP,
+};
 use ::class::{
     attribute::{Attribute, AttributeInfo, Code},
     class::{self, Class},
     field, method,
 };
-use ansi_term::Style;
 use std::{fs::File, io::Read, path::PathBuf};
 use structopt::StructOpt;
 
@@ -12,10 +14,6 @@ pub mod code;
 pub mod constant;
 pub mod pool;
 pub mod style;
-
-pub fn display_style<T: std::fmt::Display>(item: &T, prefix: &str, style: Style) {
-    print!("{}{}{}{}", style.prefix(), prefix, item, style.suffix());
-}
 
 fn pad(count: usize) {
     for _ in 0..count {
@@ -25,23 +23,23 @@ fn pad(count: usize) {
 
 fn print_field_descriptor(descriptor: &field::Descriptor) {
     match &descriptor.ty {
-        field::FieldType::Byte => print!("{}", style::PRIMITIVE_TYPE.paint("byte")),
-        field::FieldType::Char => print!("{}", style::PRIMITIVE_TYPE.paint("char")),
-        field::FieldType::Double => print!("{}", style::PRIMITIVE_TYPE.paint("double")),
-        field::FieldType::Float => print!("{}", style::PRIMITIVE_TYPE.paint("float")),
-        field::FieldType::Int => print!("{}", style::PRIMITIVE_TYPE.paint("int")),
-        field::FieldType::Long => print!("{}", style::PRIMITIVE_TYPE.paint("long")),
-        field::FieldType::Short => print!("{}", style::PRIMITIVE_TYPE.paint("short")),
-        field::FieldType::Boolean => print!("{}", style::PRIMITIVE_TYPE.paint("boolean")),
+        field::FieldType::Byte => APP.paint("type.primitive.byte", || print!("byte")),
+        field::FieldType::Char => APP.paint("type.primitive.char", || print!("char")),
+        field::FieldType::Double => APP.paint("type.primitive.double", || print!("double")),
+        field::FieldType::Float => APP.paint("type.primitive.float", || print!("float")),
+        field::FieldType::Int => APP.paint("type.primitive.int", || print!("int")),
+        field::FieldType::Long => APP.paint("type.primitive.long", || print!("long")),
+        field::FieldType::Short => APP.paint("type.primitive.short", || print!("short")),
+        field::FieldType::Boolean => APP.paint("type.primitive.boolean", || print!("boolean")),
         field::FieldType::Object(name) => {
             let mut iter = std::str::from_utf8(&name)
                 .unwrap_or("<not utf8>")
                 .split("/");
 
-            print!("{}", style::CLASS_NAME.paint(iter.next().unwrap()));
+            APP.paint("type.object", || print!("{}", iter.next().unwrap()));
 
             for item in iter {
-                print!(".{}", style::CLASS_NAME.paint(item));
+                APP.paint("type.object", || print!(".{}", item));
             }
         }
     }
@@ -53,7 +51,7 @@ fn print_field_descriptor(descriptor: &field::Descriptor) {
 
 fn print_method_descriptor(descriptor: &method::Descriptor, name: &str) {
     match &descriptor.ret {
-        method::ReturnDescriptor::Void => print!("{}", style::PRIMITIVE_TYPE.paint("void")),
+        method::ReturnDescriptor::Void => APP.paint("type.primitive.void", || print!("void")),
         method::ReturnDescriptor::Type(f) => print_field_descriptor(f),
     }
 
@@ -73,15 +71,17 @@ fn print_method_descriptor(descriptor: &method::Descriptor, name: &str) {
 fn print_attribute(class: &Class, attr: &AttributeInfo, depth: usize) {
     let mut add_newline = true;
     pad(depth);
-    print!(
-        "{}// {}{}: ",
-        style::COMMENT.prefix(),
-        match &attr.attr {
-            Attribute::Other(_) => "?",
-            _ => " ",
-        },
-        pool::get_str(&class.pool, attr.name)
-    );
+
+    APP.paint("comment", || {
+        print!(
+            "// {}{}: ",
+            match &attr.attr {
+                Attribute::Other(_) => "?",
+                _ => " ",
+            },
+            pool::get_str(&class.pool, attr.name)
+        );
+    });
 
     match &attr.attr {
         Attribute::Other(bytes) => {
@@ -103,7 +103,6 @@ fn print_attribute(class: &Class, attr: &AttributeInfo, depth: usize) {
         Attribute::ConstantValue(idx) => print!("{:?}", &class.pool[*idx]),
         Attribute::Signature(idx) => print!("{}", pool::get_str(&class.pool, *idx)),
     }
-    print!("{}", style::COMMENT.suffix());
 
     if add_newline {
         println!();
@@ -112,67 +111,67 @@ fn print_attribute(class: &Class, attr: &AttributeInfo, depth: usize) {
 
 fn print_class_access(access: &class::Access) {
     let mut was_written = false;
-    let mut write = |s, col: Style| {
+    let mut write = |s, col| {
         if was_written {
-            print!(" {}", col.paint(s));
+            APP.paint(col, || print!(" {}", s));
         } else {
-            print!("{}", col.paint(s));
+            APP.paint(col, || print!("{}", s));
             was_written = true;
         }
     };
 
     if access.is(class::Access::PUBLIC) {
-        write("public", style::ACCESS_PUBLIC);
+        write("public", "access.visibility.public");
     }
 
     if access.is(class::Access::ENUM) {
-        write("enum", style::ACCESS_ENUM);
+        write("enum", "access.class.enum");
     } else if access.is(class::Access::ANNOTATION) {
-        write("@interface", style::ACCESS_ANNOTATION);
+        write("@interface", "access.class.annotation");
     } else if access.is(class::Access::INTERFACE) {
-        write("interface", style::ACCESS_INTERFACE);
+        write("interface", "access.class.interface");
     } else {
         if access.is(class::Access::FINAL) {
-            write("final", style::ACCESS_FINAL);
+            write("final", "access.other.final");
         } else if access.is(class::Access::ABSTRACT) {
-            write("abstract", style::ACCESS_ABSTRACT);
+            write("abstract", "access.other.abstract");
         }
 
-        write("class", style::ACCESS_CLASS);
+        write("class", "access.class.class");
     }
 }
 
 fn print_field_access(access: &field::Access) {
     let mut was_written = false;
-    let mut write = |s, col: Style| {
+    let mut write = |s, col| {
         if was_written {
-            print!(" {}", col.paint(s));
+            APP.paint(col, || print!(" {}", s));
         } else {
-            print!("{}", col.paint(s));
+            APP.paint(col, || print!("{}", s));
             was_written = true;
         }
     };
 
     if access.is(field::Access::PUBLIC) {
-        write("public", style::ACCESS_PUBLIC);
+        write("public", "access.visibility.public");
     } else if access.is(field::Access::PROTECTED) {
-        write("protected", style::ACCESS_PROTECTED);
+        write("protected", "access.visibility.protected");
     } else if access.is(field::Access::PRIVATE) {
-        write("private", style::ACCESS_PRIVATE);
+        write("private", "access.visibility.private");
     }
 
     if access.is(field::Access::STATIC) {
-        write("static", style::ACCESS_STATIC);
+        write("static", "access.other.static");
     }
 
     if access.is(field::Access::FINAL) {
-        write("final", style::ACCESS_FINAL);
+        write("final", "access.other.final");
     } else if access.is(field::Access::TRANSIENT) {
-        write("transient", style::ACCESS_TRANSIENT);
+        write("transient", "access.field.transient");
     }
 
     if access.is(field::Access::VOLATILE) {
-        write("volatile", style::ACCESS_VOLATILE);
+        write("volatile", "access.field.volatile");
     }
 
     if was_written {
@@ -182,44 +181,44 @@ fn print_field_access(access: &field::Access) {
 
 fn print_method_access(access: &method::Access) {
     let mut was_written = false;
-    let mut write = |s, col: Style| {
+    let mut write = |s, col| {
         if was_written {
-            print!(" {}", col.paint(s));
+            APP.paint(col, || print!(" {}", s));
         } else {
-            print!("{}", col.paint(s));
+            APP.paint(col, || print!("{}", s));
             was_written = true;
         }
     };
 
     if access.is(method::Access::PUBLIC) {
-        write("public", style::ACCESS_PUBLIC);
+        write("public", "access.visibility.public");
     } else if access.is(method::Access::PROTECTED) {
-        write("protected", style::ACCESS_PROTECTED);
+        write("protected", "access.visibility.protected");
     } else if access.is(method::Access::PRIVATE) {
-        write("private", style::ACCESS_PRIVATE);
+        write("private", "access.visibility.private");
     }
 
     if access.is(method::Access::ABSTRACT) {
-        write("abstract", style::ACCESS_ABSTRACT);
+        write("abstract", "access.other.static");
     } else {
         if access.is(method::Access::STATIC) {
-            write("static", style::ACCESS_STATIC);
+            write("static", "access.other.static");
         }
 
         if access.is(method::Access::FINAL) {
-            write("final", style::ACCESS_FINAL);
+            write("final", "access.other.final");
         }
 
         if access.is(method::Access::SYNCHRONIZED) {
-            write("synchronized", style::ACCESS_SYNCHRONIZED);
+            write("synchronized", "access.method.synchronized");
         }
 
         if access.is(method::Access::STRICT) {
-            write("strictfp", style::ACCESS_STRICTFP);
+            write("strictfp", "access.method.strictfp");
         }
 
         if access.is(method::Access::NATIVE) {
-            write("native", style::ACCESS_NATIVE);
+            write("native", "access.method.native");
         }
     }
 
@@ -230,41 +229,38 @@ fn print_method_access(access: &method::Access) {
 
 fn print_class_decl(class: &Class) {
     print_class_access(&class.access_flags);
-    print!(
-        " {}",
-        style::CLASS_NAME.paint(pool::get_class_name(&class.pool, class.this_class))
-    );
+
+    APP.paint("type.object", || {
+        print!(" {}", pool::get_class_name(&class.pool, class.this_class))
+    });
 
     match pool::get_class_name(&class.pool, class.super_class) {
         "java/lang/Object" | "java/lang/Enum" => {}
-        _ => print!(
-            " {} {}",
-            style::EXTENDS.paint("extends"),
-            style::CLASS_NAME.paint(pool::get_class_name(&class.pool, class.super_class))
-        ),
+        _ => {
+            APP.paint("extends", || print!(" extends "));
+            APP.paint("type.object", || {
+                print!("{}", pool::get_class_name(&class.pool, class.super_class))
+            });
+        }
     }
 
     if class.interfaces.len() > 0 {
-        print!(" {} ", style::EXTENDS.paint("implements"));
-        // pprint_list(class.interfaces.iter().map(|idx|
-        // pool::get_class_name(&class.pool, idx)), style::CLASS_NAME);
+        APP.paint("extends", || print!(" implements "));
 
         let len = class.interfaces.len();
         for &idx in &class.interfaces[..len - 1] {
-            print!(
-                "{}{}{}, ",
-                style::CLASS_NAME.prefix(),
-                pool::get_class_name(&class.pool, idx),
-                style::CLASS_NAME.suffix()
-            );
+            APP.paint("type.object", || {
+                print!("{}", pool::get_class_name(&class.pool, idx))
+            });
+            print!(", ");
         }
 
-        print!(
-            "{}{}{}",
-            style::CLASS_NAME.prefix(),
-            pool::get_class_name(&class.pool, class.interfaces[len - 1]),
-            style::CLASS_NAME.suffix()
-        );
+        APP.paint("type.object", || {
+            print!(
+                "{}",
+                pool::get_class_name(&class.pool, class.interfaces[len - 1])
+            )
+        });
     }
 }
 
@@ -329,18 +325,25 @@ fn print_code(code: &Code) {
 
             let mut print = |v, branch, forward| {
                 if !was_printed {
-                    let mut style = match (branch, forward) {
-                        (false, false) => style::BACKWARD_JUMP,
-                        (false, true) => style::FORWARD_JUMP,
-                        (true, false) => style::BACKWARD_BRANCH,
-                        (true, true) => style::FORWARD_BRANCH,
+                    let style = match (branch, forward) {
+                        (false, false) => "flow.jump.backward",
+                        (false, true) => "flow.jump.forward",
+                        (true, false) => "flow.branch.backward",
+                        (true, true) => "flow.branch.forward",
                     };
 
-                    if slot % 2 == 1 {
-                        style = style.dimmed();
+                    // TODO: clean this up somehow?
+                    if APP.no_color {
+                        print!("{}", v);
+                    } else {
+                        let style = if slot % 2 == 1 {
+                            STYLE_MAP[style].dimmed()
+                        } else {
+                            STYLE_MAP[style]
+                        };
+                        print!("{}", style.paint(v));
                     }
 
-                    print!("{}", style.paint(v));
                     was_printed = true;
                 }
             };
@@ -384,41 +387,47 @@ fn print_code(code: &Code) {
     {
         pad(1);
 
-        use crate::code::{def::ArrayPrimitiveType, InstructionCategory};
-
-        let style = match code::get_category(instruction) {
-            InstructionCategory::LoadAndStore => style::OPCODE_LOAD_STORE,
-            InstructionCategory::OperandStackManagement => style::OPCODE_OPERAND_STACK_MANAGEMENT,
-            InstructionCategory::ArithmeticAndLogic => style::OPCODE_ARITH_LOGIC,
-            InstructionCategory::TypeConversion => style::OPCODE_TYPE_CONVERSION,
-            InstructionCategory::ControlFlow => style::OPCODE_CONTROL_FLOW,
-            InstructionCategory::InvocationAndReturn => style::OPCODE_INVOCATION_RETURN,
-            InstructionCategory::ObjectManipulation => style::OPCODE_OBJECT_MANIPULATION,
-            InstructionCategory::Other => style::OPCODE_DEFAULT,
-        };
+        use crate::code::def::ArrayPrimitiveType;
 
         // TODO: spacing for byte positions
         // TODO: code after method?
 
-        print!("{} ", style::COMMENT.paint("//"),);
+        APP.paint("comment", || print!("//"));
 
         print_jmps(start);
 
-        print!(
-            " {}/{}: {} ",
-            start,
-            index,
-            style.paint(code::instruction_name(tag))
-        );
+        print!(" {}/{}: ", start, index,);
+
+        APP.paint(code::get_style_key(instruction), || {
+            print!("{}", code::instruction_name(tag));
+        });
 
         match instruction {
-            Instruction::ConstInt(k) => display_style(k, "$", style::OPCODE_IMMEDIATE_OTHER),
-            Instruction::ConstLong(k) => display_style(k, "$", style::OPCODE_IMMEDIATE_OTHER),
-            Instruction::ConstFloat(k) => display_style(k, "$", style::OPCODE_IMMEDIATE_OTHER),
-            Instruction::ConstDouble(k) => display_style(k, "$", style::OPCODE_IMMEDIATE_OTHER),
+            Instruction::ConstInt(k) => {
+                print!(" $");
+                APP.paint("opcode.immediate.other", || print!("{}", k));
+            }
+            Instruction::ConstLong(k) => {
+                print!(" $");
+                APP.paint("opcode.immediate.other", || print!("{}", k));
+            }
+            Instruction::ConstFloat(k) => {
+                print!(" $");
+                APP.paint("opcode.immediate.other", || print!("{}", k));
+            }
+            Instruction::ConstDouble(k) => {
+                print!(" $");
+                APP.paint("opcode.immediate.other", || print!("{}", k));
+            }
 
-            Instruction::PushByte(k) => display_style(k, "$", style::OPCODE_IMMEDIATE_OTHER),
-            Instruction::PushShort(k) => display_style(k, "$", style::OPCODE_IMMEDIATE_OTHER),
+            Instruction::PushByte(k) => {
+                print!(" $");
+                APP.paint("opcode.immediate.other", || print!("{}", k));
+            }
+            Instruction::PushShort(k) => {
+                print!(" $");
+                APP.paint("opcode.immediate.other", || print!("{}", k));
+            }
 
             Instruction::InvokeVirtual(idx)
             | Instruction::InvokeSpecial(idx)
@@ -433,7 +442,8 @@ fn print_code(code: &Code) {
             | Instruction::GetField(idx)
             | Instruction::PutField(idx)
             | Instruction::LoadConstant(idx) => {
-                display_style(idx, "#", style::OPCODE_IMMEDIATE_INDEX)
+                print!(" #");
+                APP.paint("opcode.immediate.index", || print!("{}", idx));
             }
 
             Instruction::LoadInt(idx)
@@ -445,7 +455,10 @@ fn print_code(code: &Code) {
             | Instruction::StoreLong(idx)
             | Instruction::StoreFloat(idx)
             | Instruction::StoreDouble(idx)
-            | Instruction::StoreRef(idx) => display_style(idx, "#", style::OPCODE_IMMEDIATE_INDEX),
+            | Instruction::StoreRef(idx) => {
+                print!(" #");
+                APP.paint("opcode.immediate.index", || print!("{}", idx));
+            }
 
             Instruction::IfEqual(offset)
             | Instruction::IfNotEqual(offset)
@@ -463,138 +476,152 @@ fn print_code(code: &Code) {
             | Instruction::IfNotEqualRef(offset)
             | Instruction::IfNull(offset)
             | Instruction::IfNonNull(offset) => {
-                display_style(offset, "@", style::OPCODE_IMMEDIATE_BRANCH)
+                print!(" @");
+                APP.paint("opcode.immediate.branch", || print!("{}", offset));
             }
 
             Instruction::Goto(offset) | Instruction::Jsr(offset) => {
-                display_style(offset, "@", style::OPCODE_IMMEDIATE_BRANCH)
+                print!(" @");
+                APP.paint("opcode.immediate.branch", || print!("{}", offset));
             }
-            Instruction::Ret(idx) => display_style(idx, "@", style::OPCODE_IMMEDIATE_BRANCH),
+            Instruction::Ret(idx) => {
+                print!(" #");
+                APP.paint("opcode.immediate.branch", || print!("{}", idx));
+            }
 
             Instruction::InvokeInterface(idx, len) | Instruction::NewArrayMultiRef(idx, len) => {
-                display_style(idx, "#", style::OPCODE_IMMEDIATE_INDEX);
-                display_style(len, "^", style::OPCODE_IMMEDIATE_INDEX);
+                print!(" #");
+                APP.paint("opcode.immediate.index", || print!("{}", idx));
+                print!(" ^");
+                APP.paint("opcode.immediate.other", || print!("{}", len));
             }
 
-            Instruction::NewArrayPrimitive(ty) => match ty {
-                ArrayPrimitiveType::Boolean => {
-                    display_style(&"boolean", "", style::OPCODE_IMMEDIATE_OTHER)
-                }
-                ArrayPrimitiveType::Char => {
-                    display_style(&"char", "", style::OPCODE_IMMEDIATE_OTHER)
-                }
-                ArrayPrimitiveType::Float => {
-                    display_style(&"float", "", style::OPCODE_IMMEDIATE_OTHER)
-                }
-                ArrayPrimitiveType::Double => {
-                    display_style(&"double", "", style::OPCODE_IMMEDIATE_OTHER)
-                }
-                ArrayPrimitiveType::Byte => {
-                    display_style(&"byte", "", style::OPCODE_IMMEDIATE_OTHER)
-                }
-                ArrayPrimitiveType::Short => {
-                    display_style(&"short", "", style::OPCODE_IMMEDIATE_OTHER)
-                }
-                ArrayPrimitiveType::Int => display_style(&"int", "", style::OPCODE_IMMEDIATE_OTHER),
-                ArrayPrimitiveType::Long => {
-                    display_style(&"long", "", style::OPCODE_IMMEDIATE_OTHER)
-                }
-            },
+            Instruction::NewArrayPrimitive(ty) => APP.paint("opcode.immediate.other", || {
+                print!(
+                    " {}",
+                    match ty {
+                        ArrayPrimitiveType::Boolean => "boolean",
+                        ArrayPrimitiveType::Char => "char",
+                        ArrayPrimitiveType::Float => "float",
+                        ArrayPrimitiveType::Double => "double",
+                        ArrayPrimitiveType::Byte => "byte",
+                        ArrayPrimitiveType::Short => "short",
+                        ArrayPrimitiveType::Int => "int",
+                        ArrayPrimitiveType::Long => "long",
+                    }
+                )
+            }),
 
             _ => (),
         }
         println!();
     }
 
-    use petgraph::visit::*;
+    // use petgraph::visit::*;
 
-    let cfg = code::create_control_flow_graph(&instructions);
+    // let cfg = code::create_control_flow_graph(&instructions);
 
-    println!("digraph {{");
+    // println!("digraph {{");
 
-    for node in cfg.node_references() {
-        let id = cfg.to_index(node.id());
-        let (_, range) = node.weight();
+    // for node in cfg.node_references() {
+    //     let id = cfg.to_index(node.id());
+    //     let (_, range) = node.weight();
 
-        pad(1);
-        print!("{} [shape=\"rect\" label=\"", id);
-        for instruction in &instructions[range.start..range.end] {
-            print!("{}\\n", code::instruction_name(instruction.tag));
-        }
-        print!(
-            "{}",
-            code::INSTRUCTION_NAMES[instructions[range.end].tag as usize]
-        );
-        println!("\"]");
-    }
+    //     pad(1);
+    //     print!("{} [shape=\"rect\" label=\"", id);
+    //     for instruction in &instructions[range.start..range.end] {
+    //         print!("{}\\n", code::instruction_name(instruction.tag));
+    //     }
+    //     print!(
+    //         "{}",
+    //         code::INSTRUCTION_NAMES[instructions[range.end].tag as usize]
+    //     );
+    //     println!("\"]");
+    // }
 
-    for edge in cfg.edge_references() {
-        pad(1);
-        print!(
-            "{} -> {}",
-            cfg.to_index(edge.source()),
-            cfg.to_index(edge.target())
-        );
+    // for edge in cfg.edge_references() {
+    //     pad(1);
+    //     print!(
+    //         "{} -> {}",
+    //         cfg.to_index(edge.source()),
+    //         cfg.to_index(edge.target())
+    //     );
 
-        if let Some(branch) = edge.weight() {
-            match branch {
-                true => print!(" [label=\"T\"]"),
-                false => print!(" [label=\"F\"]"),
-            }
-        }
+    //     if let Some(branch) = edge.weight() {
+    //         match branch {
+    //             true => print!(" [label=\"T\"]"),
+    //             false => print!(" [label=\"F\"]"),
+    //         }
+    //     }
 
-        println!();
-    }
+    //     println!();
+    // }
 
-    println!("}}");
+    // println!("}}");
+}
+
+lazy_static::lazy_static! {
+    pub static ref APP: App = App::from_args();
 }
 
 #[derive(Clone, Debug, PartialEq, StructOpt)]
 #[structopt(name = "ppclass")]
-struct App {
+pub struct App {
     /// Input files to parse.
     #[structopt(name = "FILE", parse(from_os_str))]
-    input: Vec<PathBuf>,
+    pub input: Vec<PathBuf>,
 
     /// Turn off color output.
     #[structopt(long = "no-color")]
-    no_color: bool,
+    pub no_color: bool,
 
     /// Print the constant pool.
     #[structopt(short = "c", long = "constant-pool")]
-    show_constant_pool: bool,
+    pub show_constant_pool: bool,
 
     /// Print the class declaration, fields, and methods.
     #[structopt(short = "d", long = "declarations")]
-    show_decl: bool,
+    pub show_decl: bool,
+
+    /// Print the `Code` attribute for each method.
+    #[structopt(short = "C", long = "code")]
+    pub show_code: bool,
 }
 
-fn parse_class(app: &App, buf: &[u8]) {
+impl App {
+    pub fn paint<F>(&self, style: &str, func: F)
+    where
+        F: FnOnce(),
+    {
+        if self.no_color {
+            func();
+        } else {
+            print!("{}", STYLE_MAP[style].prefix());
+            func();
+            print!("{}", STYLE_MAP[style].suffix());
+        }
+    }
+}
+
+fn parse_class(buf: &[u8]) {
     let class = Class::parse(buf).unwrap();
 
-    if app.show_constant_pool {
-        for entry in 0..class.pool.len() {
-            print!(
-                "{}{:5}{} = ",
-                style::INDEX.prefix(),
-                entry,
-                style::INDEX.suffix()
-            );
+    if APP.show_constant_pool {
+        for entry in 1..class.pool.len() {
+            APP.paint("pool.index", || print!("{:5}", entry));
+            print!(" = ");
             constant::print_constant(&class.pool, entry, 0);
         }
     }
 
-    if app.show_decl {
+    if APP.show_decl {
         for attr in &*class.attributes {
             print_attribute(&class, &attr, 0);
         }
-        println!(
-            "{}// Version {}.{}{}",
-            style::COMMENT.prefix(),
-            class.version.major,
-            class.version.minor,
-            style::COMMENT.suffix()
-        );
+
+        APP.paint("comment", || {
+            println!("// Version {}.{}", class.version.major, class.version.minor);
+        });
 
         print_class_decl(&class);
 
@@ -632,14 +659,12 @@ fn parse_class(app: &App, buf: &[u8]) {
 }
 
 fn main() {
-    let app = App::from_args();
-
     let mut buf = Vec::new();
-    for path in &app.input {
+    for path in &APP.input {
         let mut file = File::open(path).unwrap();
         file.read_to_end(&mut buf).unwrap();
 
-        parse_class(&app, &buf);
+        parse_class(&buf);
 
         buf.clear();
     }

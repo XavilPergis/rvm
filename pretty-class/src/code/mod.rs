@@ -309,32 +309,35 @@ pub enum InstructionCategory {
     Other,
 }
 
-pub fn get_category(instruction: &Instruction) -> InstructionCategory {
+pub fn get_style_key(instruction: &Instruction) -> &'static str {
     use self::Instruction::*;
     match instruction {
-        LoadInt(_) | LoadLong(_) | LoadFloat(_) | LoadDouble(_) | LoadRef(_) | StoreInt(_)
-        | StoreLong(_) | StoreFloat(_) | StoreDouble(_) | StoreRef(_) | LoadArrayInt
+        LoadInt(_) | LoadLong(_) | LoadFloat(_) | LoadDouble(_) | LoadRef(_) | LoadArrayInt
         | LoadArrayLong | LoadArrayFloat | LoadArrayDouble | LoadArrayRef | LoadArrayBool
-        | LoadArrayChar | LoadArrayShort | StoreArrayInt | StoreArrayLong | StoreArrayFloat
-        | StoreArrayDouble | StoreArrayRef | StoreArrayBool | StoreArrayChar | StoreArrayShort
-        | ConstNull | ConstInt(_) | ConstLong(_) | ConstFloat(_) | LoadConstant(_)
-        | ConstDouble(_) => InstructionCategory::LoadAndStore,
+        | LoadArrayChar | LoadArrayShort => "opcode.type.load",
+
+        StoreInt(_) | StoreLong(_) | StoreFloat(_) | StoreDouble(_) | StoreRef(_)
+        | StoreArrayInt | StoreArrayLong | StoreArrayFloat | StoreArrayDouble | StoreArrayRef
+        | StoreArrayBool | StoreArrayChar | StoreArrayShort => "opcode.type.store",
+
+        ConstNull | ConstInt(_) | ConstLong(_) | ConstFloat(_) | LoadConstant(_)
+        | ConstDouble(_) => "opcode.type.load.const",
 
         PushByte(_) | PushShort(_) | Pop | Pop2 | Dup | DupX1 | DupX2 | Dup2 | Dup2X1 | Dup2X2
-        | Swap => InstructionCategory::OperandStackManagement,
+        | Swap => "opcode.type.stack",
 
         AddInt | AddLong | AddFloat | AddDouble | SubInt | SubLong | SubFloat | SubDouble
         | MulInt | MulLong | MulFloat | MulDouble | DivInt | DivLong | DivFloat | DivDouble
         | RemInt | RemLong | RemFloat | RemDouble | NegInt | NegLong | NegFloat | NegDouble
         | ShlInt | ShlLong | ShrInt | ShrLong | LogicalShrInt | LogicalShrLong | AndInt
-        | AndLong | OrInt | OrLong | XorInt | XorLong | IncInt | CompareLong | CompareLessFloat
-        | CompareGreaterFloat | CompareLessDouble | CompareGreaterDouble => {
-            InstructionCategory::ArithmeticAndLogic
-        }
+        | AndLong | OrInt | OrLong | XorInt | XorLong | IncInt => "opcode.type.arith",
+
+        CompareLong | CompareLessFloat | CompareGreaterFloat | CompareLessDouble
+        | CompareGreaterDouble => "opcode.type.logic",
 
         IntToLong | IntToFloat | IntToDouble | LongToInt | LongToFloat | LongToDouble
         | FloatToInt | FloatToLong | FloatToDouble | DoubleToInt | DoubleToLong | DoubleToFloat
-        | IntToBool | IntToChar | IntToShort => InstructionCategory::TypeConversion,
+        | IntToBool | IntToChar | IntToShort => "opcode.type.conversion",
 
         IfEqual(_)
         | IfNotEqual(_)
@@ -353,22 +356,22 @@ pub fn get_category(instruction: &Instruction) -> InstructionCategory {
         | IfNull(_)
         | IfNonNull(_)
         | Goto(_)
-        | Jsr(_)
         | Ret(_)
-        | Tableswitch
-        | Lookupswitch => InstructionCategory::ControlFlow,
-
-        ReturnInt
+        | ReturnInt
         | ReturnLong
         | ReturnFloat
         | ReturnDouble
         | ReturnRef
         | ReturnVoid
+        | Tableswitch
+        | Lookupswitch => "opcode.type.flow",
+
+        Jsr(_)
         | InvokeVirtual(_)
         | InvokeSpecial(_)
         | InvokeStatic(_)
         | InvokeInterface(_, _)
-        | InvokeDynamic(_) => InstructionCategory::InvocationAndReturn,
+        | InvokeDynamic(_) => "opcode.type.flow.invocation",
 
         GetStatic(_)
         | PutStatic(_)
@@ -377,8 +380,8 @@ pub fn get_category(instruction: &Instruction) -> InstructionCategory {
         | New(_)
         | NewArrayPrimitive(_)
         | NewArrayRef(_)
-        | NewArrayMultiRef(_, _) => InstructionCategory::ObjectManipulation,
+        | NewArrayMultiRef(_, _) => "opcode.type.object",
 
-        _ => InstructionCategory::Other,
+        _ => "opcode.type",
     }
 }
