@@ -5,6 +5,7 @@ use crate::{
 use ::class::{
     attribute::{Attribute, AttributeInfo, Code},
     class::{self, Class},
+    constant::Constant,
     field, method,
 };
 use std::{fs::File, io::Read, path::PathBuf};
@@ -92,15 +93,19 @@ fn print_attribute(class: &Class, attr: &AttributeInfo, depth: usize) {
 
         Attribute::Code(code) => {
             println!();
-            print_code(code);
+            if APP.show_code {
+                print_code(&class.pool, code);
+            }
             add_newline = false;
-            // for b in &*code.code {
-            //     print!("{:02x} ", b);
-            // }
         }
 
         Attribute::StackMapTable(_) => print!("StackMapTable"),
-        Attribute::ConstantValue(idx) => print!("{:?}", &class.pool[*idx]),
+        Attribute::ConstantValue(idx) => {
+            if constant::print_constant_index(&class.pool, *idx) {
+                print!(" ");
+            }
+            constant::print_constant_value(&class.pool, *idx);
+        }
         Attribute::Signature(idx) => print!("{}", pool::get_str(&class.pool, *idx)),
     }
 
@@ -264,7 +269,7 @@ fn print_class_decl(class: &Class) {
     }
 }
 
-fn print_code(code: &Code) {
+fn print_code(pool: &[Constant], code: &Code) {
     use crate::code::Instruction;
 
     let mut instructions = Vec::with_capacity(code.code.len());
@@ -387,7 +392,7 @@ fn print_code(code: &Code) {
     {
         pad(1);
 
-        use crate::code::def::ArrayPrimitiveType;
+        use crate::{code::def::ArrayPrimitiveType, constant::print_constant_value};
 
         // TODO: spacing for byte positions
         // TODO: code after method?
@@ -443,7 +448,8 @@ fn print_code(code: &Code) {
             | Instruction::PutField(idx)
             | Instruction::LoadConstant(idx) => {
                 print!(" #");
-                APP.paint("opcode.immediate.index", || print!("{}", idx));
+                APP.paint("opcode.immediate.index", || print!("{} ", idx));
+                print_constant_value(pool, *idx as usize);
             }
 
             Instruction::LoadInt(idx)
@@ -457,7 +463,7 @@ fn print_code(code: &Code) {
             | Instruction::StoreDouble(idx)
             | Instruction::StoreRef(idx) => {
                 print!(" #");
-                APP.paint("opcode.immediate.index", || print!("{}", idx));
+                APP.paint("opcode.immediate.index", || print!("{} ", idx));
             }
 
             Instruction::IfEqual(offset)
@@ -493,7 +499,8 @@ fn print_code(code: &Code) {
                 print!(" #");
                 APP.paint("opcode.immediate.index", || print!("{}", idx));
                 print!(" ^");
-                APP.paint("opcode.immediate.other", || print!("{}", len));
+                APP.paint("opcode.immediate.other", || print!("{} ", len));
+                print_constant_value(pool, *idx as usize);
             }
 
             Instruction::NewArrayPrimitive(ty) => APP.paint("opcode.immediate.other", || {

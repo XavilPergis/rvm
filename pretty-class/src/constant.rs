@@ -1,7 +1,7 @@
 use crate::{pad, APP};
 use class::constant::Constant;
 
-fn print_contant_type(pool: &[Constant], index: usize) {
+pub fn print_contant_type(pool: &[Constant], index: usize) {
     fn pad_constant_name(name: &str, style: &str) {
         APP.paint(style, || print!("{}", name));
         for _ in 0..("InterfaceMethodRef".len() - name.len()) {
@@ -34,7 +34,7 @@ fn print_contant_type(pool: &[Constant], index: usize) {
     }
 }
 
-fn print_constant_index(pool: &[Constant], index: usize) -> bool {
+pub fn print_constant_index(pool: &[Constant], index: usize) -> bool {
     match &pool[index] {
         Constant::InvokeDynamic {
             name_and_type: idx, ..
@@ -74,7 +74,7 @@ fn print_constant_index(pool: &[Constant], index: usize) -> bool {
     true
 }
 
-fn print_constant_value(pool: &[Constant], index: usize) {
+pub fn print_constant_value(pool: &[Constant], index: usize) {
     match &pool[index] {
         Constant::Nothing => print!("<nothing>"),
         Constant::Integer(val) => APP.paint("pool.val.int", || print!("{}", val)),
@@ -109,6 +109,7 @@ fn print_constant_value(pool: &[Constant], index: usize) {
             name_and_type,
         } => {
             print_constant_value(pool, *class);
+            print!(".");
             print_constant_value(pool, *name_and_type);
         }
 
