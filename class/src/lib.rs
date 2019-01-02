@@ -3,8 +3,16 @@ pub mod class;
 pub mod constant;
 pub mod field;
 pub mod method;
+pub mod signature;
 
 use byteorder::{BigEndian, ByteOrder};
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Default)]
+pub struct Jtf(Box<[u8]>);
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Default)]
+pub struct JtfRef<'a>(&'a [u8]);
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Default)]
+pub struct JtfMut<'a>(&'a mut [u8]);
 
 pub type ClassResult<T> = Result<T, ClassError>;
 

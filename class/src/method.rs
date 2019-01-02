@@ -139,15 +139,6 @@ pub enum ReturnDescriptor {
     Type(field::Descriptor),
 }
 
-impl std::fmt::Display for ReturnDescriptor {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            ReturnDescriptor::Void => write!(f, "void"),
-            ReturnDescriptor::Type(t) => write!(f, "{}", t),
-        }
-    }
-}
-
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Descriptor {
     pub ret: ReturnDescriptor,

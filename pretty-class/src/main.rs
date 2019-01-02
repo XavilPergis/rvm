@@ -24,16 +24,32 @@ fn pad(count: usize) {
 
 fn print_field_descriptor(descriptor: &field::Descriptor) {
     match &descriptor.ty {
-        field::FieldType::Byte => APP.paint("type.primitive.byte", || print!("byte")),
-        field::FieldType::Char => APP.paint("type.primitive.char", || print!("char")),
-        field::FieldType::Double => APP.paint("type.primitive.double", || print!("double")),
-        field::FieldType::Float => APP.paint("type.primitive.float", || print!("float")),
-        field::FieldType::Int => APP.paint("type.primitive.int", || print!("int")),
-        field::FieldType::Long => APP.paint("type.primitive.long", || print!("long")),
-        field::FieldType::Short => APP.paint("type.primitive.short", || print!("short")),
-        field::FieldType::Boolean => APP.paint("type.primitive.boolean", || print!("boolean")),
+        field::FieldType::Primitive(field::BaseType::Byte) => {
+            APP.paint("type.primitive.byte", || print!("byte"))
+        }
+        field::FieldType::Primitive(field::BaseType::Char) => {
+            APP.paint("type.primitive.char", || print!("char"))
+        }
+        field::FieldType::Primitive(field::BaseType::Double) => {
+            APP.paint("type.primitive.double", || print!("double"))
+        }
+        field::FieldType::Primitive(field::BaseType::Float) => {
+            APP.paint("type.primitive.float", || print!("float"))
+        }
+        field::FieldType::Primitive(field::BaseType::Int) => {
+            APP.paint("type.primitive.int", || print!("int"))
+        }
+        field::FieldType::Primitive(field::BaseType::Long) => {
+            APP.paint("type.primitive.long", || print!("long"))
+        }
+        field::FieldType::Primitive(field::BaseType::Short) => {
+            APP.paint("type.primitive.short", || print!("short"))
+        }
+        field::FieldType::Primitive(field::BaseType::Boolean) => {
+            APP.paint("type.primitive.boolean", || print!("boolean"))
+        }
         field::FieldType::Object(name) => {
-            let mut iter = std::str::from_utf8(&name)
+            let mut iter = std::str::from_utf8(&name.0)
                 .unwrap_or("<not utf8>")
                 .split("/");
 
