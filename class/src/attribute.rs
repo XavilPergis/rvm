@@ -7,7 +7,7 @@
 //! the first six bytes, followed by attribute-specific information, whose
 //! length is decided by the attrinute type.
 //!
-//! ```
+//! ```txt
 //! AttributeInfo {
 //!     name_index: u16,
 //!     length: u32,
@@ -21,7 +21,7 @@
 //! attribute needs to be read, but cannot affect the behavior of the JVM and as
 //! such are informational.
 //!
-//! ```
+//! ```txt
 //! Attribute::ConstantValue {
 //!     // must point to a `Constant::StringData` containing `"ConstantValue"`
 //!     name_index: u16,
@@ -386,10 +386,10 @@ pub(crate) fn parse_attribute(
 
     let attr = match &pool[index] {
         Constant::StringData(data) => Ok(match &**data {
-            b"ConstantValue" => Attribute::ConstantValue(input.parse_u16()? as usize),
-            b"Code" => Attribute::Code(parse_code(input, pool)?),
-            b"StackMapTable" => Attribute::StackMapTable(parse_stack_map_table(input)?),
-            b"Signature" => Attribute::Signature(input.parse_u16()? as usize),
+            "ConstantValue" => Attribute::ConstantValue(input.parse_u16()? as usize),
+            "Code" => Attribute::Code(parse_code(input, pool)?),
+            "StackMapTable" => Attribute::StackMapTable(parse_stack_map_table(input)?),
+            "Signature" => Attribute::Signature(input.parse_u16()? as usize),
             _ => Attribute::Other(input.take(len)?.into()),
         }),
         _ => Err(ClassError::InvalidPoolType),

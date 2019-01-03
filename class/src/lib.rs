@@ -3,6 +3,10 @@ pub mod class;
 pub mod constant;
 pub mod field;
 pub mod method;
+mod mutf8;
+pub mod signature;
+
+pub use crate::mutf8::*;
 
 use byteorder::{BigEndian, ByteOrder};
 
@@ -30,6 +34,8 @@ pub enum ClassError {
     // General errors
     InvalidPoolIndex,
     InvalidPoolType,
+
+    InvalidModifiedUtf8Byte(usize, u8),
 }
 
 impl From<ParseError> for ClassError {

@@ -2,7 +2,7 @@
 //!
 //! All numbers in this format are big-endian
 //!
-//! ```
+//! ```txt
 //! Class {
 //!     // 0xCAFEBABE
 //!     magic: u32,
@@ -138,43 +138,6 @@ impl std::ops::BitOr for Access {
 
     fn bitor(self, other: Access) -> Access {
         Access(self.0 | other.0)
-    }
-}
-
-impl std::fmt::Display for Access {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let mut was_written = false;
-        let mut write = |s| {
-            if was_written {
-                write!(f, " {}", s)
-            } else {
-                write!(f, "{}", s)?;
-                was_written = true;
-                Ok(())
-            }
-        };
-
-        if self.is(Access::PUBLIC) {
-            write("public")?;
-        }
-
-        if self.is(Access::ENUM) {
-            write("enum")?;
-        } else if self.is(Access::ANNOTATION) {
-            write("@interface")?;
-        } else if self.is(Access::INTERFACE) {
-            write("interface")?;
-        } else {
-            if self.is(Access::FINAL) {
-                write("final")?;
-            } else if self.is(Access::ABSTRACT) {
-                write("abstract")?;
-            }
-
-            write("class")?;
-        }
-
-        Ok(())
     }
 }
 

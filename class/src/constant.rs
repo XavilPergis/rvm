@@ -9,7 +9,7 @@
 //!
 //! Long and Double entries take up two slots in the constant pool, but the
 //! upper entry is never directly referenced.
-//! ```
+//! ```txt
 //! // tag = 1
 //! Constant::Utf8 {
 //!     tag:    u8
@@ -156,7 +156,7 @@ pub enum Constant {
     Double(f64),
     String(PoolIndex),
 
-    StringData(Box<[u8]>),
+    StringData(String),
 
     Class(PoolIndex),
     MethodType(PoolIndex),
@@ -193,7 +193,7 @@ impl Constant {
         self == &Constant::Nothing
     }
 
-    pub fn as_string_data(&self) -> Option<&[u8]> {
+    pub fn as_string_data(&self) -> Option<&str> {
         match self {
             Constant::StringData(data) => Some(&**data),
             _ => None,
@@ -205,7 +205,7 @@ pub fn parse_constant<'src>(input: &mut ByteParser<'src>) -> ClassResult<Constan
     Ok(match input.parse_u8()? {
         CONSTANT_UTF8 => {
             let len = input.parse_u16()? as usize;
-            Constant::StringData(input.take(len)?.into())
+            Constant::StringData(crate::parse_mutf8(input.take(len)?)?.into())
         }
         CONSTANT_INTEGER => input.parse_i32().map(Constant::Integer)?,
         CONSTANT_FLOAT => input.parse_f32().map(Constant::Float)?,

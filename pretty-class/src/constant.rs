@@ -82,9 +82,7 @@ pub fn print_constant_value(pool: &[Constant], index: usize) {
         Constant::Long(val) => APP.paint("pool.val.long", || print!("{}", val)),
         Constant::Double(val) => APP.paint("pool.val.double", || print!("{}", val)),
 
-        Constant::StringData(data) => APP.paint("pool.val.string", || {
-            print!("{}", std::str::from_utf8(data).unwrap_or("<not utf8>"))
-        }),
+        Constant::StringData(data) => APP.paint("pool.val.string", || print!("{}", data)),
 
         Constant::InvokeDynamic {
             name_and_type: idx, ..

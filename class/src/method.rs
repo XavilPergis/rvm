@@ -1,3 +1,4 @@
+//! ```txt
 //! Method {
 //!     access_flags: u16,
 //!     name_index: u16,
@@ -5,6 +6,7 @@
 //!     attributes_count: u16,
 //!     attributes: [AttributeInfo; attributes_count],
 //! }
+//! ```
 
 use crate::{
     attribute::{parse_attribute, AttributeInfo},
@@ -139,15 +141,6 @@ pub enum ReturnDescriptor {
     Type(field::Descriptor),
 }
 
-impl std::fmt::Display for ReturnDescriptor {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            ReturnDescriptor::Void => write!(f, "void"),
-            ReturnDescriptor::Type(t) => write!(f, "{}", t),
-        }
-    }
-}
-
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Descriptor {
     pub ret: ReturnDescriptor,
@@ -183,7 +176,7 @@ pub fn parse_method(input: &mut ByteParser<'_>, pool: &[Constant]) -> ClassResul
     let name = input.parse_u16()? as usize;
     let descriptor_index = input.parse_u16()? as usize;
     let descriptor = match pool[descriptor_index].as_string_data() {
-        Some(data) => parse_method_descriptor(&mut ByteParser::new(data)),
+        Some(data) => parse_method_descriptor(&mut ByteParser::new(data.as_bytes())),
         _ => Err(ClassError::InvalidPoolType),
     }?;
 

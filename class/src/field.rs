@@ -1,4 +1,4 @@
-//! ```
+//! ```txt
 //! Field {
 //!     access:           u16
 //!     name:             u16
@@ -73,74 +73,8 @@ impl std::ops::BitOr for Access {
     }
 }
 
-impl std::fmt::Display for Access {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let mut was_written = false;
-        let mut write = |s| {
-            if was_written {
-                write!(f, " {}", s)
-            } else {
-                write!(f, "{}", s)?;
-                was_written = true;
-                Ok(())
-            }
-        };
-
-        if !self.is(Access::ENUM) {
-            if self.is(Access::PUBLIC) {
-                write("public")?;
-            } else if self.is(Access::PROTECTED) {
-                write("protected")?;
-            } else if self.is(Access::PRIVATE) {
-                write("private")?;
-            }
-
-            if self.is(Access::STATIC) {
-                write("static")?;
-            }
-
-            if self.is(Access::FINAL) {
-                write("final")?;
-            } else if self.is(Access::TRANSIENT) {
-                write("transient")?;
-            }
-
-            if self.is(Access::VOLATILE) {
-                write("volatile")?;
-            }
-        }
-
-        Ok(())
-    }
-}
-
-impl std::fmt::Display for Descriptor {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            match &self.ty {
-                FieldType::Byte => "byte",
-                FieldType::Char => "char",
-                FieldType::Double => "double",
-                FieldType::Float => "float",
-                FieldType::Int => "int",
-                FieldType::Long => "long",
-                FieldType::Short => "short",
-                FieldType::Boolean => "boolean",
-                FieldType::Object(name) => std::str::from_utf8(&name).unwrap_or("<not utf8>"),
-            }
-        )?;
-
-        for _ in 0..self.dimensions {
-            write!(f, "[]")?;
-        }
-        Ok(())
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub enum FieldType {
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub enum BaseType {
     Byte,
     Char,
     Double,
@@ -149,7 +83,12 @@ pub enum FieldType {
     Long,
     Short,
     Boolean,
-    Object(Box<[u8]>),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub enum FieldType {
+    Primitive(BaseType),
+    Object(String),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -181,21 +120,23 @@ pub(crate) fn parse_field_descriptor_terminal(
 ) -> ClassResult<FieldType> {
     // TODO: verify there's not extra gunk at the end of the descriptor
     Ok(match input.parse_u8()? {
-        b'B' => FieldType::Byte,
-        b'C' => FieldType::Char,
-        b'D' => FieldType::Double,
-        b'F' => FieldType::Float,
-        b'I' => FieldType::Int,
-        b'J' => FieldType::Long,
-        b'S' => FieldType::Short,
-        b'Z' => FieldType::Boolean,
+        b'B' => FieldType::Primitive(BaseType::Byte),
+        b'C' => FieldType::Primitive(BaseType::Char),
+        b'D' => FieldType::Primitive(BaseType::Double),
+        b'F' => FieldType::Primitive(BaseType::Float),
+        b'I' => FieldType::Primitive(BaseType::Int),
+        b'J' => FieldType::Primitive(BaseType::Long),
+        b'S' => FieldType::Primitive(BaseType::Short),
+        b'Z' => FieldType::Primitive(BaseType::Boolean),
         b'L' => FieldType::Object(
-            input
-                .take_while(|ch| ch != b';')?
-                .split_last()
-                .map(|(_, tail)| tail)
-                .unwrap_or(b"")
-                .into(),
+            crate::parse_mutf8(
+                input
+                    .take_while(|ch| ch != b';')?
+                    .split_last()
+                    .map(|(_, tail)| tail)
+                    .unwrap_or(b""),
+            )?
+            .into(),
         ),
 
         other => return Err(ClassError::BadDescriptorType(other)),
@@ -208,7 +149,7 @@ pub(crate) fn parse_field(input: &mut ByteParser<'_>, pool: &[Constant]) -> Clas
 
     let descriptor_index = input.parse_u16()? as usize;
     let descriptor = match pool[descriptor_index].as_string_data() {
-        Some(data) => parse_field_descriptor(&mut ByteParser::new(data)),
+        Some(data) => parse_field_descriptor(&mut ByteParser::new(data.as_bytes())),
         _ => Err(ClassError::InvalidPoolType),
     }?;
 
