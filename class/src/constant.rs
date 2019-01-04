@@ -80,7 +80,10 @@
 //! }
 //! ```
 
-use crate::{parse::ByteParser, ClassError, ClassResult};
+use crate::{
+    parse::{self, ByteParser},
+    ClassError, ClassResult,
+};
 
 pub type PoolIndex = usize;
 
@@ -205,7 +208,7 @@ pub fn parse_constant<'src>(input: &mut ByteParser<'src>) -> ClassResult<Constan
     Ok(match input.parse_u8()? {
         CONSTANT_UTF8 => {
             let len = input.parse_u16()? as usize;
-            Constant::StringData(crate::parse_mutf8(input.take(len)?)?.into())
+            Constant::StringData(parse::parse_mutf8(input.take(len)?)?.into())
         }
         CONSTANT_INTEGER => input.parse_i32().map(Constant::Integer)?,
         CONSTANT_FLOAT => input.parse_f32().map(Constant::Float)?,

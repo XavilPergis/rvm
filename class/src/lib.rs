@@ -3,11 +3,10 @@ pub mod class;
 pub mod constant;
 pub mod field;
 pub mod method;
-mod mutf8;
+pub(crate) mod mutf8;
 pub mod parse;
 pub mod signature;
 
-pub use crate::mutf8::*;
 use crate::parse::ParseError;
 
 pub type ClassResult<T> = Result<T, ClassError>;

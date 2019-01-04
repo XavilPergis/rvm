@@ -11,7 +11,7 @@
 use crate::{
     attribute::{parse_attribute, AttributeInfo},
     constant::{Constant, PoolIndex},
-    parse::ByteParser,
+    parse::{self, ByteParser},
     ClassError, ClassResult,
 };
 
@@ -128,7 +128,7 @@ pub fn parse_field_descriptor_terminal(input: &mut ByteParser<'_>) -> ClassResul
         b'S' => FieldType::Primitive(BaseType::Short),
         b'Z' => FieldType::Primitive(BaseType::Boolean),
         b'L' => FieldType::Object(
-            crate::parse_mutf8(
+            parse::parse_mutf8(
                 input
                     .take_while(|ch| ch != b';')?
                     .split_last()

@@ -1,4 +1,8 @@
-use crate::{field::BaseType, parse::ByteParser, ClassError, ClassResult};
+use crate::{
+    field::BaseType,
+    parse::{self, ByteParser},
+    ClassError, ClassResult,
+};
 
 // `<T>`, `<T extends A>`, `<T extends B1 & B2 & B3>`
 /// Represents a single type parameter.
@@ -135,7 +139,7 @@ pub enum TypeSignature {
 
 pub fn parse_identifier(input: &mut ByteParser<'_>) -> ClassResult<String> {
     input.backtrace(|input| {
-        Ok(crate::parse_mutf8(input.peeking_take_while(|ch| match ch {
+        Ok(parse::parse_mutf8(input.peeking_take_while(|ch| match ch {
             b'.' | b';' | b'[' | b'/' | b'<' | b'>' | b':' => false,
             _ => true,
         })?)?

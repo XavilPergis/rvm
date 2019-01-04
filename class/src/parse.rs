@@ -1,5 +1,7 @@
 use byteorder::{BigEndian, ByteOrder};
 
+pub use crate::mutf8::*;
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum ParseError {
     Incomplete(usize),
