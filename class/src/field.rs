@@ -98,7 +98,7 @@ pub struct Descriptor {
     pub ty: FieldType,
 }
 
-pub(crate) fn parse_field_descriptor(input: &mut ByteParser<'_>) -> ClassResult<Descriptor> {
+pub fn parse_field_descriptor(input: &mut ByteParser<'_>) -> ClassResult<Descriptor> {
     match input.peek(1)?[0] {
         b'[' => {
             input.take(1)?;
@@ -116,9 +116,7 @@ pub(crate) fn parse_field_descriptor(input: &mut ByteParser<'_>) -> ClassResult<
     }
 }
 
-pub(crate) fn parse_field_descriptor_terminal(
-    input: &mut ByteParser<'_>,
-) -> ClassResult<FieldType> {
+pub fn parse_field_descriptor_terminal(input: &mut ByteParser<'_>) -> ClassResult<FieldType> {
     // TODO: verify there's not extra gunk at the end of the descriptor
     Ok(match input.parse_u8()? {
         b'B' => FieldType::Primitive(BaseType::Byte),
@@ -144,7 +142,7 @@ pub(crate) fn parse_field_descriptor_terminal(
     })
 }
 
-pub(crate) fn parse_field(input: &mut ByteParser<'_>, pool: &[Constant]) -> ClassResult<Field> {
+pub fn parse_field(input: &mut ByteParser<'_>, pool: &[Constant]) -> ClassResult<Field> {
     let access = Access(input.parse_u16()?);
     let name = input.parse_u16()? as usize;
 

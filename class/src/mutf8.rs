@@ -2,7 +2,7 @@ use crate::{parse::ByteParser, ClassError, ClassResult};
 use std::borrow::Cow;
 
 // why did I make this so generic...
-struct CowBuilder<'a, T>
+pub struct CowBuilder<'a, T>
 where
     [T]: ToOwned,
 {
