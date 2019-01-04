@@ -36,6 +36,9 @@ pub enum ClassError {
     InvalidPoolType,
 
     InvalidModifiedUtf8Byte(usize, u8),
+
+    InvalidWildcardBound(u8),
+    InvalidBaseType(u8),
 }
 
 impl From<ParseError> for ClassError {
@@ -68,32 +71,57 @@ impl<'src> ByteParser<'src> {
         self.src.len() - self.offset
     }
 
-    pub fn tag(&mut self, tag: &[u8]) -> ParseResult<()> {
-        if self.remaining() < tag.len() {
-            Err(ParseError::Incomplete(tag.len() - self.remaining()))
-        } else {
-            for i in 0..tag.len() {
-                if self.src[self.offset + i] != tag[i] {
-                    return Err(ParseError::Error(self.offset + i));
+    /// Tries to run the function, and backtraces by setting self to the state
+    /// of the parser before the function was run if an error was returned.
+    ///
+    /// It is important to note that using multiple parse functionss without
+    /// surrounding them in a call to `backtrace` will likely result in
+    /// incorrect behavior. That is, running a parser multiple times without
+    /// backtracing will live the parser's head potentially pointing to the
+    /// middle of some input instead of the beginning.
+    pub fn backtrace<F, T, E>(&mut self, mut func: F) -> Result<T, E>
+    where
+        F: FnMut(&mut Self) -> Result<T, E>,
+    {
+        let start = self.clone();
+        func(self).map_err(|err| {
+            *self = start;
+            err
+        })
+    }
+
+    /// Takes `tag.len()` bytes and returns an error if the bytes did not match.
+    pub fn expect(&mut self, tag: &[u8]) -> ParseResult<()> {
+        self.backtrace(|p| {
+            if p.remaining() < tag.len() {
+                Err(ParseError::Incomplete(tag.len() - p.remaining()))
+            } else {
+                for i in 0..tag.len() {
+                    if p.src[p.offset + i] != tag[i] {
+                        return Err(ParseError::Error(p.offset + i));
+                    }
                 }
+
+                p.offset += tag.len();
+                Ok(())
             }
-
-            self.offset += tag.len();
-            Ok(())
-        }
+        })
     }
 
+    /// Takes `len` bytes, and errors if there were not enough bytes remaining.
     pub fn take(&mut self, len: usize) -> ParseResult<&'src [u8]> {
-        if self.remaining() < len {
-            Err(ParseError::Incomplete(len - self.remaining()))
-        } else {
-            let res = &self.src[self.offset..self.offset + len];
-            self.offset += len;
-            Ok(res)
-        }
+        self.backtrace(|p| {
+            if p.remaining() < len {
+                Err(ParseError::Incomplete(len - p.remaining()))
+            } else {
+                let res = &p.src[p.offset..p.offset + len];
+                p.offset += len;
+                Ok(res)
+            }
+        })
     }
 
-    /// Take bytes until a condition is no longer met. Note that `take_while`
+    /// Takes bytes until a condition is no longer met. Note that `take_while`
     /// will consume the last inspected byte! That is,
     /// `ByteParser::new(b"aaaab").take_while(|c| c != b'b')` will consume the
     /// entire input! Additionally, the parser will return an error if the end
@@ -103,21 +131,79 @@ impl<'src> ByteParser<'src> {
     where
         F: FnMut(u8) -> bool,
     {
-        let mut len = 0;
-        // While we haven't run off the end of the buffer...
-        while self.src.len() - self.offset - len > 0 {
-            // if the condition is no longer met, then we take what we've seen
-            // and return it
-            if !func(self.src[self.offset + len]) {
-                return self.take(len + 1);
+        self.backtrace(|p| {
+            let mut len = 0;
+            // While we haven't run off the end of the buffer...
+            while p.src.len() - p.offset - len > 0 {
+                // if the condition is no longer met, then we take what we've seen
+                // and return it
+                if !func(p.src[p.offset + len]) {
+                    return p.take(len + 1);
+                }
+
+                len += 1;
             }
 
-            len += 1;
-        }
-
-        Err(ParseError::IncompleteUnknown)
+            Err(ParseError::IncompleteUnknown)
+        })
     }
 
+    /// Like `take_while`, but doesn't consume the last inspected byte.
+    pub fn peeking_take_while<F>(&mut self, mut func: F) -> ParseResult<&'src [u8]>
+    where
+        F: FnMut(u8) -> bool,
+    {
+        self.backtrace(|p| {
+            let mut len = 0;
+            // While we haven't run off the end of the buffer...
+            while p.src.len() - p.offset - len > 0 {
+                // if the condition is no longer met, then we take what we've seen
+                // and return it
+                if !func(p.src[p.offset + len]) {
+                    return p.take(len);
+                }
+
+                len += 1;
+            }
+
+            Err(ParseError::IncompleteUnknown)
+        })
+    }
+
+    /// Constructs a vector of the results of `func` by repeatedly applying it
+    /// until it returns an `Err`. This is like `<production>*`.
+    pub fn repeat0<F, T, E>(&mut self, mut func: F) -> Vec<T>
+    where
+        F: FnMut(&mut Self) -> Result<T, E>,
+    {
+        let mut results = vec![];
+        loop {
+            match self.backtrace(|p| func(p)) {
+                Ok(val) => results.push(val),
+                Err(_) => break,
+            }
+        }
+        results
+    }
+
+    /// Constructs a vector of the results of `func` by applying it once
+    /// normally, and then operating like `repeat0` for the rest of the input.
+    /// This is like `<production>+`.
+    pub fn repeat1<F, T, E>(&mut self, mut func: F) -> Result<Vec<T>, E>
+    where
+        F: FnMut(&mut Self) -> Result<T, E>,
+    {
+        let mut results = vec![self.backtrace(|p| func(p))?];
+        loop {
+            match self.backtrace(|p| func(p)) {
+                Ok(val) => results.push(val),
+                Err(_) => break,
+            }
+        }
+        Ok(results)
+    }
+
+    /// Like `take`, but does not advance the parser.
     pub fn peek(&mut self, len: usize) -> ParseResult<&'src [u8]> {
         if self.remaining() < len {
             Err(ParseError::Incomplete(len - self.remaining()))
@@ -127,13 +213,15 @@ impl<'src> ByteParser<'src> {
         }
     }
 
+    /// Applies `func` exactly `len` times, and returns a vector of the items
+    /// produced by `func`.
     pub fn seq<F, T, E>(&mut self, len: usize, mut func: F) -> Result<Vec<T>, E>
     where
         F: FnMut(&mut Self) -> Result<T, E>,
     {
         let mut vec = Vec::with_capacity(len);
         for _ in 0..len {
-            vec.push(func(self)?);
+            vec.push(self.backtrace(|p| func(p))?);
         }
         Ok(vec)
     }

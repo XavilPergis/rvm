@@ -52,7 +52,7 @@ pub fn parse_access_flags(input: &mut ByteParser<'_>) -> ParseResult<Access> {
 pub const CLASS_MAGIC: &[u8; 4] = &[0xCA, 0xFE, 0xBA, 0xBE];
 
 pub fn parse_class(input: &mut ByteParser<'_>) -> ClassResult<Class> {
-    input.tag(CLASS_MAGIC)?;
+    input.expect(CLASS_MAGIC)?;
     let version = parse_version(input)?;
     let pool = parse_constant_pool(input)?;
     let access_flags = parse_access_flags(input)?;

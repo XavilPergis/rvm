@@ -148,7 +148,7 @@ pub struct Descriptor {
 }
 
 pub fn parse_method_descriptor(input: &mut ByteParser<'_>) -> ClassResult<Descriptor> {
-    input.tag(b"(")?;
+    input.expect(b"(")?;
 
     let mut args = Vec::new();
     loop {
@@ -158,7 +158,7 @@ pub fn parse_method_descriptor(input: &mut ByteParser<'_>) -> ClassResult<Descri
         });
     }
 
-    input.tag(b")")?;
+    input.expect(b")")?;
 
     let ret = match input.peek(1)?[0] {
         b'V' => ReturnDescriptor::Void,
