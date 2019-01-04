@@ -4,58 +4,52 @@ use crate::{
     ClassError, ClassResult,
 };
 
-// `<T>`, `<T extends A>`, `<T extends B1 & B2 & B3>`
+/// Represents some type, whether it is a reference type or a primitive type
+/// like `int`.
+///
+/// ```txt
+/// type := <primitive_type> | <reference_type> ;
+/// ```
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub enum Type {
+    Primitive(BaseType),
+    Reference(ReferenceType),
+}
+
+/// Represents some reference type.
+///
+/// ```txt
+/// array_type     := "[" <type> ;
+/// type_variable  := "T" <ident> ";" ;
+/// reference_type := <class_type_signature>
+///                 | <array_type>
+///                 | <type_variable>
+///                 ;
+/// ```
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub enum ReferenceType {
+    Object(Box<ObjectType>),
+    Array(usize, Box<Type>),
+    /// Reference to a type variable.
+    TypeVariable(String),
+}
+
 /// Represents a single type parameter.
 ///
 /// ```txt
 /// type_param      := <ident> <class_bound> <interface_bound>* ;
-/// class_bound     := ":" <object_type>? ;
-/// interface_bound := ":" <object_type> ;
+/// class_bound     := ":" <reference_type>? ;
+/// interface_bound := ":" <reference_type> ;
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct TypeParamater {
     /// The name of the type paramater, something like `T`
     pub ident: String,
     /// The superclass bound, the `A` in `<T extends A>` where `A` is a class.
-    pub class_bound: Option<ObjectType>,
+    pub class_bound: Option<ReferenceType>,
     /// The superinterface bounds, `B1` and `B2` in `<T extends B1 & B2>` where
     /// `B1` and `B2` are interfaces.
-    pub interface_bounds: Box<[ObjectType]>,
-}
-
-/// Represents some reference type.
-///
-/// ```txt
-/// type_variable := "T" <ident> ";" ;
-/// object_type   := <class_type_signature>
-///                | <array_type_signature>
-///                | <type_variable>
-///                ;
-/// ```
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub enum ObjectType {
-    // Something like `Foo<T, U>`
-    Class(Box<FullClassTypeSignature>),
-    // Something like `Bar<T>[][]`, `int[]`
-    Array(usize, Box<TypeSignature>),
-    // T
-    TypeVariable(String),
-}
-
-/// Represents the signature of a class; what type bounds it has, what it
-/// extends, and what it implements.
-///
-/// ```txt
-/// class_sig := <type_param>? <class_ty_sig> <class_ty_sig>* ;
-/// ```
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct ClassSignature {
-    /// The type paramaters declared on this class.
-    pub type_params: Option<Box<[TypeParamater]>>,
-    /// The class that this class extends.
-    pub extends: FullClassTypeSignature,
-    /// The interafaces that this class implements.
-    pub implements: Box<[FullClassTypeSignature]>,
+    pub interface_bounds: Box<[ReferenceType]>,
 }
 
 /// Represents a fully elaborated class.
@@ -66,29 +60,30 @@ pub struct ClassSignature {
 /// `inner` is empty.
 ///
 /// ```txt
-/// package_specifier     := <ident> "/" <package_specifier>? ;
-/// class_type_sig_suffix := "." <class_type_sig>;
-/// full_class_type_sig   := "L" <package_specifier>? <class_type_sig> <class_type_sig_suffix>* ;
+/// package_specifier  := <ident> "/" <package_specifier>? ;
+/// object_type_suffix := "." <object_type_fragment>;
+/// object_type        := "L" <package_specifier>? <object_type_fragment> <object_type_suffix>* ;
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct FullClassTypeSignature {
+pub struct ObjectType {
     /// The segments of the package that this class is in. This value for
     /// `java.lang.String` would be `["java", "lang"]`.
     pub package: Option<Box<[String]>>,
     /// The outer class.
-    pub class: ClassTypeSignature,
+    pub class: ObjectTypeFragment,
     /// All of the classes between `class` and the last. eg, `Foo<A, B,
     /// C>.Bar<A, C>.Baz` would be `[Foo<A, B, C>, Bar<A, C>, Baz]`.
-    pub inner: Box<[ClassTypeSignature]>,
+    pub inner: Box<[ObjectTypeFragment]>,
 }
 
 /// Represents a possibly parameterized class.
 ///
 /// ```txt
-/// class_type_sig := <ident> <type_arguments>? ;
+/// type_arguments       := "<" <type_arguments>+ ">" ;
+/// object_type_fragment := <ident> <type_arguments>? ;
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct ClassTypeSignature {
+pub struct ObjectTypeFragment {
     /// The name of this class, without any package specifier.
     pub ident: String,
     /// The type arguments on this class.
@@ -111,7 +106,7 @@ pub enum WildcardBound {
 /// Represents the use of a type parameter.
 ///
 /// ```txt
-/// type_argument := <wildcard_bound>? <object_type>
+/// type_argument := <wildcard_bound>? <reference_type>
 ///                | "*"
 ///                ;
 /// ```
@@ -120,23 +115,28 @@ pub enum TypeArgument {
     /// `<?>`
     Wildcard,
     /// `<? extends B>` or `<? super B>`
-    Bounded(WildcardBound, ObjectType),
+    Bounded(WildcardBound, ReferenceType),
     /// `<T>`
-    Normal(ObjectType),
+    Exact(ReferenceType),
 }
 
-/// Represents some type, whether it is an object type or a base type like
-/// `int`.
+/// Represents the signature of a class; what type bounds it has, what it
+/// extends, and what it implements.
 ///
 /// ```txt
-/// type_sig := <base_type> | <object_type> ;
+/// class_sig := <type_param>? <object_type> <object_type>* ;
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub enum TypeSignature {
-    Base(BaseType),
-    Object(ObjectType),
+pub struct ClassSignature {
+    /// The type paramaters declared on this class.
+    pub type_params: Option<Box<[TypeParamater]>>,
+    /// The class that this class extends.
+    pub extends: ObjectType,
+    /// The interafaces that this class implements.
+    pub implements: Box<[ObjectType]>,
 }
 
+/// Parse an identifier as specified in §4.3.4
 pub fn parse_identifier(input: &mut ByteParser<'_>) -> ClassResult<String> {
     input.backtrace(|input| {
         Ok(parse::parse_mutf8(input.peeking_take_while(|ch| match ch {
@@ -197,7 +197,7 @@ pub fn parse_formal_type_parameter(input: &mut ByteParser<'_>) -> ClassResult<Ty
 //   : FieldTypeSignatureopt
 // InterfaceBound:
 //   : FieldTypeSignature
-pub fn parse_class_bound(input: &mut ByteParser<'_>) -> ClassResult<Option<ObjectType>> {
+pub fn parse_class_bound(input: &mut ByteParser<'_>) -> ClassResult<Option<ReferenceType>> {
     input.backtrace(|input| {
         input.expect(b":")?;
         Ok(parse_field_type_signature(input).ok())
@@ -206,7 +206,7 @@ pub fn parse_class_bound(input: &mut ByteParser<'_>) -> ClassResult<Option<Objec
 
 // InterfaceBound:
 //   : FieldTypeSignature
-pub fn parse_interface_bound(input: &mut ByteParser<'_>) -> ClassResult<ObjectType> {
+pub fn parse_interface_bound(input: &mut ByteParser<'_>) -> ClassResult<ReferenceType> {
     input.backtrace(|input| {
         input.expect(b":")?;
         parse_field_type_signature(input)
@@ -214,19 +214,19 @@ pub fn parse_interface_bound(input: &mut ByteParser<'_>) -> ClassResult<ObjectTy
 }
 
 // FieldTypeSignature:
-//   FullClassTypeSignature
+//   ClassTypeSignature
 //   ArrayTypeSignature
 //   TypeVariableSignature
-pub fn parse_field_type_signature(input: &mut ByteParser<'_>) -> ClassResult<ObjectType> {
+pub fn parse_field_type_signature(input: &mut ByteParser<'_>) -> ClassResult<ReferenceType> {
     if let Some(sig) = parse_class_type_signature(input).ok() {
-        return Ok(ObjectType::Class(Box::new(sig)));
+        return Ok(ReferenceType::Object(Box::new(sig)));
     }
 
     if let Some((len, ty)) = parse_array_type_signature(input).ok() {
-        return Ok(ObjectType::Array(len, Box::new(ty)));
+        return Ok(ReferenceType::Array(len, Box::new(ty)));
     }
 
-    parse_type_variable_signature(input).map(ObjectType::TypeVariable)
+    parse_type_variable_signature(input).map(ReferenceType::TypeVariable)
 }
 
 // SuperclassSignature:
@@ -236,9 +236,7 @@ pub fn parse_field_type_signature(input: &mut ByteParser<'_>) -> ClassResult<Obj
 //
 // ClassTypeSignature:
 //   L PackageSpecifieropt SimpleClassTypeSignature ClassTypeSignatureSuffix* ;
-pub fn parse_class_type_signature(
-    input: &mut ByteParser<'_>,
-) -> ClassResult<FullClassTypeSignature> {
+pub fn parse_class_type_signature(input: &mut ByteParser<'_>) -> ClassResult<ObjectType> {
     input.backtrace(|input| {
         input.expect(b"L")?;
         let package = parse_package_specifier(input).ok();
@@ -246,7 +244,7 @@ pub fn parse_class_type_signature(
         let inner = input.repeat0(parse_class_type_signature_suffix).into();
         input.expect(b";")?;
 
-        Ok(FullClassTypeSignature {
+        Ok(ObjectType {
             package: package.map(|v| v.into()),
             class,
             inner,
@@ -270,11 +268,11 @@ pub fn parse_package_specifier(input: &mut ByteParser<'_>) -> ClassResult<Vec<St
 //   Identifier TypeArgumentsopt
 pub fn parse_simple_class_type_signature(
     input: &mut ByteParser<'_>,
-) -> ClassResult<ClassTypeSignature> {
+) -> ClassResult<ObjectTypeFragment> {
     input.backtrace(|input| {
         let ident = parse_identifier(input)?;
         let type_arguments = parse_type_arguments(input).ok();
-        Ok(ClassTypeSignature {
+        Ok(ObjectTypeFragment {
             ident,
             type_arguments,
         })
@@ -285,7 +283,7 @@ pub fn parse_simple_class_type_signature(
 //   . SimpleClassTypeSignature
 pub fn parse_class_type_signature_suffix(
     input: &mut ByteParser<'_>,
-) -> ClassResult<ClassTypeSignature> {
+) -> ClassResult<ObjectTypeFragment> {
     input.backtrace(|input| {
         input.expect(b".")?;
         parse_simple_class_type_signature(input)
@@ -323,7 +321,7 @@ pub fn parse_type_argument(input: &mut ByteParser<'_>) -> ClassResult<TypeArgume
             Some(bound) => TypeArgument::Bounded(bound, parse_field_type_signature(input)?),
             None => match input.expect(b"*").ok() {
                 Some(_) => TypeArgument::Wildcard,
-                None => TypeArgument::Normal(parse_field_type_signature(input)?),
+                None => TypeArgument::Exact(parse_field_type_signature(input)?),
             },
         })
     })
@@ -344,14 +342,12 @@ pub fn parse_wildcard_indicator(input: &mut ByteParser<'_>) -> ClassResult<Wildc
 
 // ArrayTypeSignature:
 //   [ TypeSignature
-pub fn parse_array_type_signature(
-    input: &mut ByteParser<'_>,
-) -> ClassResult<(usize, TypeSignature)> {
+pub fn parse_array_type_signature(input: &mut ByteParser<'_>) -> ClassResult<(usize, Type)> {
     // TODO: make this not recursive?
     input.backtrace(|input| {
         input.expect(b"[")?;
         Ok(match parse_type_signature(input)? {
-            TypeSignature::Object(ObjectType::Array(len, ty)) => (len + 1, *ty),
+            Type::Reference(ReferenceType::Array(len, ty)) => (len + 1, *ty),
             other => (1, other),
         })
     })
@@ -360,11 +356,11 @@ pub fn parse_array_type_signature(
 // TypeSignature:
 //   FieldTypeSignature
 //   BaseType
-pub fn parse_type_signature(input: &mut ByteParser<'_>) -> ClassResult<TypeSignature> {
+pub fn parse_type_signature(input: &mut ByteParser<'_>) -> ClassResult<Type> {
     input.backtrace(|input| {
         Ok(match parse_base_type(input).ok() {
-            Some(ty) => TypeSignature::Base(ty),
-            None => TypeSignature::Object(parse_field_type_signature(input)?),
+            Some(ty) => Type::Primitive(ty),
+            None => Type::Reference(parse_field_type_signature(input)?),
         })
     })
 }
@@ -418,17 +414,17 @@ mod tests {
         let input = b"[[Lnet/xavil/MyObject<+TT;>;";
         let mut p = ByteParser::new(input);
 
-        let res = ObjectType::Array(
+        let res = ReferenceType::Array(
             2,
-            Box::new(TypeSignature::Object(ObjectType::Class(Box::new(
-                FullClassTypeSignature {
+            Box::new(Type::Reference(ReferenceType::Object(Box::new(
+                ObjectType {
                     package: Some(vec!["net".into(), "xavil".into()].into()),
-                    class: ClassTypeSignature {
+                    class: ObjectTypeFragment {
                         ident: "MyObject".into(),
                         type_arguments: Some(
                             vec![TypeArgument::Bounded(
                                 WildcardBound::Extends,
-                                ObjectType::TypeVariable("T".into()),
+                                ReferenceType::TypeVariable("T".into()),
                             )]
                             .into(),
                         ),
