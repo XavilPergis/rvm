@@ -149,7 +149,8 @@ pub enum StackMapFrame {
 
 use crate::{
     constant::{Constant, PoolIndex},
-    ByteParser, ClassError, ClassResult,
+    parse::ByteParser,
+    ClassError, ClassResult,
 };
 use std::ops::Range;
 

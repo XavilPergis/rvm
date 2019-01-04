@@ -1,4 +1,4 @@
-use crate::{ByteParser, ClassError, ClassResult};
+use crate::{parse::ByteParser, ClassError, ClassResult};
 use std::borrow::Cow;
 
 // why did I make this so generic...

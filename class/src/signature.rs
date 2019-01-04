@@ -1,4 +1,4 @@
-use crate::{field::BaseType, ByteParser, ClassError, ClassResult};
+use crate::{field::BaseType, parse::ByteParser, ClassError, ClassResult};
 
 // `<T>`, `<T extends A>`, `<T extends B1 & B2 & B3>`
 /// Represents a single type parameter.

@@ -11,7 +11,9 @@
 use crate::{
     attribute::{parse_attribute, AttributeInfo},
     constant::{Constant, PoolIndex},
-    field, ByteParser, ClassError, ClassResult,
+    field,
+    parse::ByteParser,
+    ClassError, ClassResult,
 };
 
 /// Method properties bitfield.

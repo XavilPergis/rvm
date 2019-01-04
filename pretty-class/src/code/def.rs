@@ -1,4 +1,4 @@
-use class::{ByteParser, ParseError};
+use class::parse::{ByteParser, ParseError};
 
 pub fn instruction_name(tag: u8) -> &'static str {
     match tag {

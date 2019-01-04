@@ -35,7 +35,8 @@ use crate::{
     constant::{parse_constant_pool, Constant},
     field::{parse_field, Field},
     method::{parse_method, Method},
-    ByteParser, ClassError, ClassResult, ParseResult,
+    parse::{ByteParser, ParseResult},
+    ClassError, ClassResult,
 };
 
 pub fn parse_version(input: &mut ByteParser<'_>) -> ParseResult<Version> {
