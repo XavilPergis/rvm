@@ -76,53 +76,54 @@ impl<'src> ByteParser<'src> {
         })
     }
 
+    pub fn predicate_len<F>(&self, mut func: F) -> usize
+    where
+        F: FnMut(u8) -> bool,
+    {
+        let mut len = 0;
+        // Increase len until we run out of bytes...
+        while self.remaining() - len > 0 {
+            // ...or we reach the end of the predicate
+            if !func(self.src[self.offset + len]) {
+                break;
+            }
+
+            len += 1;
+        }
+        len
+    }
+
     /// Takes bytes until a condition is no longer met. Note that `take_while`
     /// will consume the last inspected byte! That is,
     /// `ByteParser::new(b"aaaab").take_while(|c| c != b'b')` will consume the
     /// entire input! Additionally, the parser will return an error if the end
     /// of the input stream is reached while the predicate has not yet returned
     /// `false`.
-    pub fn take_while<F>(&mut self, mut func: F) -> ParseResult<&'src [u8]>
+    pub fn take_while<F>(&mut self, func: F) -> ParseResult<&'src [u8]>
     where
         F: FnMut(u8) -> bool,
     {
-        self.backtrace(|p| {
-            let mut len = 0;
-            // While we haven't run off the end of the buffer...
-            while p.src.len() - p.offset - len > 0 {
-                // if the condition is no longer met, then we take what we've seen
-                // and return it
-                if !func(p.src[p.offset + len]) {
-                    return p.take(len + 1);
-                }
-
-                len += 1;
-            }
-
+        let len = self.predicate_len(func);
+        if self.remaining() - len == 0 {
             Err(ParseError::IncompleteUnknown)
-        })
+        } else {
+            let out = self.take(len)?;
+            self.offset += 1;
+            Ok(out)
+        }
     }
 
     /// Like `take_while`, but doesn't consume the last inspected byte.
-    pub fn peeking_take_while<F>(&mut self, mut func: F) -> ParseResult<&'src [u8]>
+    pub fn peeking_take_while<F>(&mut self, func: F) -> ParseResult<&'src [u8]>
     where
         F: FnMut(u8) -> bool,
     {
-        self.backtrace(|p| {
-            let mut len = 0;
-            // While we haven't run off the end of the buffer...
-            while p.src.len() - p.offset - len > 0 {
-                // if the condition is no longer met, then we take what we've seen
-                // and return it
-                if !func(p.src[p.offset + len]) {
-                    return p.take(len);
-                }
-
-                len += 1;
-            }
-
+        let len = self.predicate_len(func);
+        if self.remaining() - len == 0 {
             Err(ParseError::IncompleteUnknown)
-        })
+        } else {
+            self.take(len)
+        }
     }
 
     /// Constructs a vector of the results of `func` by repeatedly applying it
@@ -219,5 +220,41 @@ impl<'src> ByteParser<'src> {
 
     pub fn parse_f64(&mut self) -> ParseResult<f64> {
         self.take(8).map(|b| f64::from_bits(BigEndian::read_u64(b)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // owo
+    #[test]
+    fn test_pred_len() {
+        let mut parser = ByteParser::new(b"abcdefgh");
+        parser.expect(b"abcd").unwrap();
+        assert_eq!(4, parser.predicate_len(|_| true));
+    }
+
+    #[test]
+    fn test_take_while_valid() {
+        let mut parser = ByteParser::new(b"foo.bar");
+        assert_eq!(parser.take_while(|ch| ch != b'.'), Ok(&b"foo"[..]));
+        assert_eq!(parser.remaining(), 3);
+    }
+
+    #[test]
+    fn test_peeking_take_while_valid() {
+        let mut parser = ByteParser::new(b"foo.bar");
+        assert_eq!(parser.peeking_take_while(|ch| ch != b'.'), Ok(&b"foo"[..]));
+        assert_eq!(parser.remaining(), 4);
+    }
+
+    #[test]
+    fn test_take_while_invalid() {
+        let mut parser = ByteParser::new(b"foo");
+        assert_eq!(
+            parser.take_while(|ch| ch != b'.'),
+            Err(ParseError::IncompleteUnknown)
+        );
     }
 }

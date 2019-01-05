@@ -136,6 +136,22 @@ pub struct ClassSignature {
     pub implements: Box<[ObjectType]>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct MethodSignature {
+    /// The type paramaters declared on this method.
+    pub type_params: Option<Box<[TypeParamater]>>,
+    pub args: Box<[Type]>,
+    /// Either the return type of the method, or `void`, represented by `None`.
+    pub ret: Option<Type>,
+    pub throws: Box<[Throws]>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub enum Throws {
+    Object(ObjectType),
+    TypeVariable(String),
+}
+
 /// Parse an identifier as specified in §4.3.4
 pub fn parse_identifier(input: &mut ByteParser<'_>) -> ClassResult<String> {
     input.backtrace(|input| {
@@ -383,9 +399,87 @@ pub(crate) fn parse_base_type(input: &mut ByteParser<'_>) -> ClassResult<BaseTyp
     })
 }
 
+// MethodTypeSignature:
+//     FormalTypeParametersopt (TypeSignature*) ReturnType ThrowsSignature*
+pub fn parse_method_signature(input: &mut ByteParser<'_>) -> ClassResult<MethodSignature> {
+    input.backtrace(|input| {
+        let type_params = parse_formal_type_parameters(input).ok();
+        input.expect(b"(")?;
+        let args = input.repeat0(parse_type_signature).into();
+        input.expect(b")")?;
+        let ret = parse_return_type(input)?;
+        let throws = input.repeat0(parse_throws_signature).into();
+
+        Ok(MethodSignature {
+            type_params,
+            args,
+            ret,
+            throws,
+        })
+    })
+}
+
+// ReturnType:
+//     TypeSignature
+//     VoidDescriptor
+pub fn parse_return_type(input: &mut ByteParser<'_>) -> ClassResult<Option<Type>> {
+    input.backtrace(|input| {
+        if let Ok(_) = input.expect(b"V") {
+            return Ok(None);
+        }
+
+        parse_type_signature(input).map(Some)
+    })
+}
+
+// ThrowsSignature:
+//     ^ ClassTypeSignature
+//     ^ TypeVariableSignature
+pub fn parse_throws_signature(input: &mut ByteParser<'_>) -> ClassResult<Throws> {
+    input.backtrace(|input| {
+        input.expect(b"^")?;
+
+        if let Ok(object) = parse_class_type_signature(input) {
+            return Ok(Throws::Object(object));
+        }
+
+        parse_identifier(input).map(Throws::TypeVariable)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_sig_method() {
+        let input = b"<T::L/java/lang/Iterable;>(TT;[ILjava/lang/Object;)V^Ljava/io/IOException;";
+        let mut p = ByteParser::new(input);
+
+        let sig = parse_method_signature(&mut p);
+
+        let type_params =
+            parse_formal_type_parameters(&mut ByteParser::new(b"<T::L/java/lang/Iterable;>"))
+                .unwrap();
+
+        let arg1 = parse_type_signature(&mut ByteParser::new(b"TT;")).unwrap();
+        let arg2 = parse_type_signature(&mut ByteParser::new(b"[I")).unwrap();
+        let arg3 = parse_type_signature(&mut ByteParser::new(b"Ljava/lang/Object;")).unwrap();
+
+        let ret = parse_return_type(&mut ByteParser::new(b"V")).unwrap();
+        let throws =
+            parse_throws_signature(&mut ByteParser::new(b"^Ljava/io/IOException;")).unwrap();
+
+        assert_eq!(
+            sig,
+            Ok(MethodSignature {
+                type_params: Some(type_params),
+                args: vec![arg1, arg2, arg3].into(),
+                ret,
+                throws: vec![throws].into(),
+            })
+        )
+    }
 
     #[test]
     fn test_sig_ident() {

@@ -36,6 +36,7 @@ pub enum ClassError {
 
     InvalidModifiedUtf8Byte(usize, u8),
 
+    // Signature parse errors
     InvalidWildcardBound(u8),
     InvalidBaseType(u8),
 }
