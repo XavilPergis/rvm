@@ -42,7 +42,7 @@ pub enum ReferenceType {
 /// interface_bound := ":" <reference_type> ;
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct TypeParamater {
+pub struct TypeParameter {
     /// The name of the type paramater, something like `T`
     pub ident: String,
     /// The superclass bound, the `A` in `<T extends A>` where `A` is a class.
@@ -76,6 +76,30 @@ pub struct ObjectType {
     pub inner: Box<[ObjectTypeFragment]>,
 }
 
+impl ObjectType {
+    /// Creates an object type from a string representing the base name. This
+    /// will not have any package specifier, and will not be an inner class.
+    pub fn from_ident(class: String) -> Self {
+        ObjectType {
+            package: None,
+            inner: Default::default(),
+            class: ObjectTypeFragment::from_ident(class),
+        }
+    }
+
+    /// Specifies the package that this object type appears in. See struct
+    /// documentation.
+    pub fn with_package_specifier<I>(self, iter: I) -> Self
+    where
+        I: IntoIterator<Item = String>,
+    {
+        ObjectType {
+            package: Some(iter.into_iter().collect()),
+            ..self
+        }
+    }
+}
+
 /// Represents a possibly parameterized class.
 ///
 /// ```txt
@@ -88,6 +112,17 @@ pub struct ObjectTypeFragment {
     pub ident: String,
     /// The type arguments on this class.
     pub type_arguments: Option<Box<[TypeArgument]>>,
+}
+
+impl ObjectTypeFragment {
+    /// Creates a fragment with no type arguments from a string representing the
+    /// identifier.
+    pub fn from_ident(ident: String) -> Self {
+        ObjectTypeFragment {
+            ident,
+            type_arguments: None,
+        }
+    }
 }
 
 /// Represents a bound on a wildcard.
@@ -129,7 +164,7 @@ pub enum TypeArgument {
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct ClassSignature {
     /// The type paramaters declared on this class.
-    pub type_params: Option<Box<[TypeParamater]>>,
+    pub type_params: Option<Box<[TypeParameter]>>,
     /// The class that this class extends.
     pub extends: ObjectType,
     /// The interafaces that this class implements.
@@ -139,7 +174,7 @@ pub struct ClassSignature {
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct MethodSignature {
     /// The type paramaters declared on this method.
-    pub type_params: Option<Box<[TypeParamater]>>,
+    pub type_params: Option<Box<[TypeParameter]>>,
     pub args: Box<[Type]>,
     /// Either the return type of the method, or `void`, represented by `None`.
     pub ret: Option<Type>,
@@ -183,7 +218,7 @@ pub fn parse_class_signature(input: &mut ByteParser<'_>) -> ClassResult<ClassSig
 //   < FormalTypeParameter+ >
 pub fn parse_formal_type_parameters(
     input: &mut ByteParser<'_>,
-) -> ClassResult<Box<[TypeParamater]>> {
+) -> ClassResult<Box<[TypeParameter]>> {
     input.backtrace(|input| {
         input.expect(b"<")?;
         let res = input.repeat1(parse_formal_type_parameter)?;
@@ -195,13 +230,13 @@ pub fn parse_formal_type_parameters(
 
 // FormalTypeParameter:
 //   Identifier ClassBound InterfaceBound*
-pub fn parse_formal_type_parameter(input: &mut ByteParser<'_>) -> ClassResult<TypeParamater> {
+pub fn parse_formal_type_parameter(input: &mut ByteParser<'_>) -> ClassResult<TypeParameter> {
     input.backtrace(|input| {
         let ident = parse_identifier(input)?;
         let class_bound = parse_class_bound(input)?;
         let interface_bounds = input.repeat0(parse_interface_bound);
 
-        Ok(TypeParamater {
+        Ok(TypeParameter {
             ident,
             class_bound,
             interface_bounds: interface_bounds.into(),
@@ -383,7 +418,6 @@ pub fn parse_type_signature(input: &mut ByteParser<'_>) -> ClassResult<Type> {
 
 pub(crate) fn parse_base_type(input: &mut ByteParser<'_>) -> ClassResult<BaseType> {
     input.backtrace(|input| {
-        // TODO: verify there's not extra gunk at the end of the descriptor
         Ok(match input.parse_u8()? {
             b'B' => BaseType::Byte,
             b'C' => BaseType::Char,
@@ -443,7 +477,7 @@ pub fn parse_throws_signature(input: &mut ByteParser<'_>) -> ClassResult<Throws>
             return Ok(Throws::Object(object));
         }
 
-        parse_identifier(input).map(Throws::TypeVariable)
+        parse_type_variable_signature(input).map(Throws::TypeVariable)
     })
 }
 

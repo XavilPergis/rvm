@@ -127,16 +127,7 @@ pub fn parse_field_descriptor_terminal(input: &mut ByteParser<'_>) -> ClassResul
         b'J' => FieldType::Primitive(BaseType::Long),
         b'S' => FieldType::Primitive(BaseType::Short),
         b'Z' => FieldType::Primitive(BaseType::Boolean),
-        b'L' => FieldType::Object(
-            parse::parse_mutf8(
-                input
-                    .take_while(|ch| ch != b';')?
-                    .split_last()
-                    .map(|(_, tail)| tail)
-                    .unwrap_or(b""),
-            )?
-            .into(),
-        ),
+        b'L' => FieldType::Object(parse::parse_mutf8(input.take_while(|ch| ch != b';')?)?.into()),
 
         other => return Err(ClassError::BadDescriptorType(other)),
     })

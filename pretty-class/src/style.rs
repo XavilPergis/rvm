@@ -34,11 +34,16 @@ lazy_static::lazy_static! {
 
         let entries = entries! {
             "comment" => base Color::Cyan.normal(),
-            "extends" => base Color::Yellow.bold(),
+            "extends" => base Color::Purple.bold(),
+            "super" => base Color::Purple.bold(),
+            "path" => base Color::Green.normal(),
+            "throws" => base Color::Purple.bold(),
 
-            "type" => base Color::Green.normal(),
-            "type.object" => inherit Overrides::default().bold(true),
-            "type.primitive" => inherit Overrides::default(),
+            "type" => base Color::Blue.bold(),
+            "type.object" => inherit Overrides::default(),
+            "type.object.parameter" => base Color::Yellow.bold(),
+            "type.object.wildcard" => base Color::Yellow.bold(),
+            "type.primitive" => inherit Overrides::default().bold(false),
             "type.primitive.byte" => inherit Overrides::default(),
             "type.primitive.char" => inherit Overrides::default(),
             "type.primitive.double" => inherit Overrides::default(),
@@ -75,7 +80,7 @@ lazy_static::lazy_static! {
             "access.visibility.protected" => inherit Overrides::default(),
             "access.visibility.private" => inherit Overrides::default(),
 
-            "access" => base Color::Yellow.normal(),
+            "access" => base Color::Purple.bold(),
             "access.other.final" => inherit Overrides::default(),
             "access.other.static" => inherit Overrides::default(),
             "access.other.abstract" => inherit Overrides::default(),
@@ -87,7 +92,7 @@ lazy_static::lazy_static! {
             "access.method.strictfp" => inherit Overrides::default(),
             "access.method.native" => inherit Overrides::default(),
 
-            "access.class" => base Color::Blue.normal(),
+            "access.class" => base Color::Purple.bold(),
             "access.class.enum" => inherit Overrides::default(),
             "access.class.interface" => inherit Overrides::default(),
             "access.class.class" => inherit Overrides::default(),

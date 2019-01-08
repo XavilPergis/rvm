@@ -7,6 +7,8 @@ use ::class::{
     class::{self, Class},
     constant::Constant,
     field, method,
+    parse::ByteParser,
+    signature as sig,
 };
 use std::{fs::File, io::Read, path::PathBuf};
 use structopt::StructOpt;
@@ -14,6 +16,7 @@ use structopt::StructOpt;
 pub mod code;
 pub mod constant;
 pub mod pool;
+pub mod signature;
 pub mod style;
 
 fn pad(count: usize) {
@@ -22,68 +25,11 @@ fn pad(count: usize) {
     }
 }
 
-fn print_field_descriptor(descriptor: &field::Descriptor) {
-    match &descriptor.ty {
-        field::FieldType::Primitive(field::BaseType::Byte) => {
-            APP.paint("type.primitive.byte", || print!("byte"))
-        }
-        field::FieldType::Primitive(field::BaseType::Char) => {
-            APP.paint("type.primitive.char", || print!("char"))
-        }
-        field::FieldType::Primitive(field::BaseType::Double) => {
-            APP.paint("type.primitive.double", || print!("double"))
-        }
-        field::FieldType::Primitive(field::BaseType::Float) => {
-            APP.paint("type.primitive.float", || print!("float"))
-        }
-        field::FieldType::Primitive(field::BaseType::Int) => {
-            APP.paint("type.primitive.int", || print!("int"))
-        }
-        field::FieldType::Primitive(field::BaseType::Long) => {
-            APP.paint("type.primitive.long", || print!("long"))
-        }
-        field::FieldType::Primitive(field::BaseType::Short) => {
-            APP.paint("type.primitive.short", || print!("short"))
-        }
-        field::FieldType::Primitive(field::BaseType::Boolean) => {
-            APP.paint("type.primitive.boolean", || print!("boolean"))
-        }
-        field::FieldType::Object(name) => {
-            let mut iter = name.split("/");
-
-            APP.paint("type.object", || print!("{}", iter.next().unwrap()));
-
-            for item in iter {
-                APP.paint("type.object", || print!(".{}", item));
-            }
-        }
-    }
-
-    for _ in 0..descriptor.dimensions {
-        print!("[]");
-    }
-}
-
-fn print_method_descriptor(descriptor: &method::Descriptor, name: &str) {
-    match &descriptor.ret {
-        method::ReturnDescriptor::Void => APP.paint("type.primitive.void", || print!("void")),
-        method::ReturnDescriptor::Type(f) => print_field_descriptor(f),
-    }
-
-    print!(" {}(", name);
-
-    if descriptor.args.len() > 0 {
-        print_field_descriptor(&descriptor.args[0]);
-        for item in &descriptor.args[1..] {
-            print!(", ");
-            print_field_descriptor(item);
-        }
-    }
-
-    print!(")");
-}
-
 fn print_attribute(class: &Class, attr: &AttributeInfo, depth: usize) {
+    if !APP.show_attributes {
+        return;
+    }
+
     let mut add_newline = true;
     pad(depth);
 
@@ -243,43 +189,6 @@ fn print_method_access(access: &method::Access) {
 
     if was_written {
         print!(" ");
-    }
-}
-
-fn print_class_decl(class: &Class) {
-    print_class_access(&class.access_flags);
-
-    APP.paint("type.object", || {
-        print!(" {}", pool::get_class_name(&class.pool, class.this_class))
-    });
-
-    match pool::get_class_name(&class.pool, class.super_class) {
-        "java/lang/Object" | "java/lang/Enum" => {}
-        _ => {
-            APP.paint("extends", || print!(" extends "));
-            APP.paint("type.object", || {
-                print!("{}", pool::get_class_name(&class.pool, class.super_class))
-            });
-        }
-    }
-
-    if class.interfaces.len() > 0 {
-        APP.paint("extends", || print!(" implements "));
-
-        let len = class.interfaces.len();
-        for &idx in &class.interfaces[..len - 1] {
-            APP.paint("type.object", || {
-                print!("{}", pool::get_class_name(&class.pool, idx))
-            });
-            print!(", ");
-        }
-
-        APP.paint("type.object", || {
-            print!(
-                "{}",
-                pool::get_class_name(&class.pool, class.interfaces[len - 1])
-            )
-        });
     }
 }
 
@@ -607,6 +516,14 @@ pub struct App {
     /// Print the `Code` attribute for each method.
     #[structopt(short = "C", long = "code")]
     pub show_code: bool,
+
+    /// Print item attributes.
+    #[structopt(short = "A", long = "attributes")]
+    pub show_attributes: bool,
+
+    /// Do not print the full path of an object; just the name.
+    #[structopt(long = "no-paths")]
+    pub no_show_paths: bool,
 }
 
 impl App {
@@ -624,6 +541,33 @@ impl App {
     }
 }
 
+fn print_class_decl(class: &Class) {
+    print_class_access(&class.access_flags);
+
+    print!(" ");
+
+    let signature = get_signature_attrib(&class.pool, &class.attributes)
+        .and_then(|raw| sig::parse_class_signature(&mut ByteParser::new(raw.as_bytes())).ok())
+        .or_else(|| signature::class_to_class_sig(&class).ok());
+
+    if let Some(signature) = signature {
+        signature::print_class(&signature, class);
+    } else {
+        print!("<invalid class signature>");
+    }
+}
+
+fn get_signature_attrib<'p>(pool: &'p [Constant], attributes: &[AttributeInfo]) -> Option<&'p str> {
+    for attr in attributes {
+        match &attr.attr {
+            Attribute::Signature(idx) => return pool[*idx].as_string_data(),
+            _ => (),
+        }
+    }
+
+    None
+}
+
 fn parse_class(buf: &[u8]) {
     let class = Class::parse(buf).unwrap();
 
@@ -635,6 +579,7 @@ fn parse_class(buf: &[u8]) {
         }
     }
 
+    use ::class::signature::Type;
     if APP.show_decl {
         for attr in &*class.attributes {
             print_attribute(&class, &attr, 0);
@@ -652,11 +597,25 @@ fn parse_class(buf: &[u8]) {
             for attr in &*field.attributes {
                 print_attribute(&class, &attr, 1);
             }
+
             pad(1);
             print_field_access(&field.access);
             let name = pool::get_str(&class.pool, field.name);
 
-            print_field_descriptor(&field.descriptor);
+            let signature = get_signature_attrib(&class.pool, &*field.attributes)
+                .and_then(|raw| {
+                    sig::parse_field_type_signature(&mut ByteParser::new(raw.as_bytes()))
+                        .map(Type::Reference)
+                        .ok()
+                })
+                .or_else(|| signature::field_desc_to_ty(field.descriptor.clone()).ok());
+
+            if let Some(ty) = signature {
+                signature::print_type(&ty);
+            } else {
+                print!("<invalid field signature>");
+            }
+
             println!(" {};", name);
         }
 
@@ -671,7 +630,18 @@ fn parse_class(buf: &[u8]) {
             print_method_access(&method.access);
             let name = pool::get_str(&class.pool, method.name);
 
-            print_method_descriptor(&method.descriptor, name);
+            let signature = get_signature_attrib(&class.pool, &*method.attributes)
+                .and_then(|raw| {
+                    sig::parse_method_signature(&mut ByteParser::new(raw.as_bytes())).ok()
+                })
+                .or_else(|| signature::method_desc_to_sig(method.descriptor.clone()).ok());
+
+            if let Some(ty) = signature {
+                signature::print_method(&ty, name);
+            } else {
+                print!("<invalid method signature>");
+            }
+
             println!(";");
         }
 
