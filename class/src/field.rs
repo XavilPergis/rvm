@@ -9,70 +9,12 @@
 //! ```
 
 use crate::{
+    access::{FieldProperties, FromAccessBitfield},
     attribute::{parse_attribute, AttributeInfo},
     constant::{Constant, PoolIndex},
     parse::{self, ByteParser},
     ClassError, ClassResult,
 };
-
-/// Properties and access patterns of this field.
-///
-/// If this field is part of an
-/// interface, then the `public`, `final`, and `static` flags must all be set,
-/// and no other flags except `synthetic` can be set.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub struct Access(u16);
-
-impl Access {
-    /// Declared as an element of an enum.
-    pub const ENUM: Access = Access(0x4000);
-    /// Declared final; it is never directly assigned to after
-    /// object construction. If this flag is set, the `volatile` flag must not
-    /// be set.
-    pub const FINAL: Access = Access(0x0010);
-    /// Declared private; usable only within the defining class. If this flag is
-    /// set, no other visibility flag can be set.
-    pub const PRIVATE: Access = Access(0x0002);
-    /// Declared protected; may be accessed within subclasses. If this flag is
-    /// set, no other visibility flag can be set.
-    pub const PROTECTED: Access = Access(0x0004);
-    /// Declared public; may be accessed from outside its package. If this flag
-    /// is set, no other visibility flag can be set.
-    pub const PUBLIC: Access = Access(0x0001);
-    /// Declared static.
-    pub const STATIC: Access = Access(0x0008);
-    /// Declared synthetic; not present in the source code.
-    pub const SYNTHETIC: Access = Access(0x1000);
-    /// Declared transient; not written or read by a persistent object manager.
-    pub const TRANSIENT: Access = Access(0x0080);
-    /// Declared volatile; cannot be cached. If this flag is set, the `final`
-    /// flag must not be set.
-    pub const VOLATILE: Access = Access(0x0040);
-
-    pub fn is(self, access: Access) -> bool {
-        self & access != Access(0)
-    }
-
-    pub fn into_raw(self) -> u16 {
-        self.0
-    }
-}
-
-impl std::ops::BitAnd for Access {
-    type Output = Access;
-
-    fn bitand(self, other: Access) -> Access {
-        Access(self.0 & other.0)
-    }
-}
-
-impl std::ops::BitOr for Access {
-    type Output = Access;
-
-    fn bitor(self, other: Access) -> Access {
-        Access(self.0 | other.0)
-    }
-}
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum BaseType {
@@ -134,7 +76,9 @@ pub fn parse_field_descriptor_terminal(input: &mut ByteParser<'_>) -> ClassResul
 }
 
 pub fn parse_field(input: &mut ByteParser<'_>, pool: &[Constant]) -> ClassResult<Field> {
-    let access = Access(input.parse_u16()?);
+    let flags = input.parse_u16()?;
+    let properties =
+        FieldProperties::from_bitfield(flags).ok_or(ClassError::InvalidAccessFlags(flags))?;
     let name = input.parse_u16()? as usize;
 
     let descriptor_index = input.parse_u16()? as usize;
@@ -147,7 +91,7 @@ pub fn parse_field(input: &mut ByteParser<'_>, pool: &[Constant]) -> ClassResult
     let attributes = input.seq(attributes_len, |input| parse_attribute(input, pool))?;
 
     Ok(Field {
-        access,
+        properties,
         name,
         descriptor,
         attributes: attributes.into(),
@@ -156,7 +100,7 @@ pub fn parse_field(input: &mut ByteParser<'_>, pool: &[Constant]) -> ClassResult
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Field {
-    pub access: Access,
+    pub properties: FieldProperties,
     /// Index into the constant pool, pointing to a `Constant::StringData` that
     /// denotes the name of this field
     pub name: PoolIndex,

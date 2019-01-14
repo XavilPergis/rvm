@@ -67,6 +67,15 @@ fn print_attribute(class: &Class, attr: &AttributeInfo, depth: usize) {
             constant::print_constant_value(&class.pool, *idx);
         }
         Attribute::Signature(idx) => print!("{}", pool::get_str(&class.pool, *idx)),
+        Attribute::Exceptions(exceptions) => {
+            if exceptions.len() > 0 {
+                constant::print_constant_value(&class.pool, exceptions[0]);
+                for &idx in &exceptions[1..] {
+                    print!(", ");
+                    constant::print_constant_value(&class.pool, idx);
+                }
+            }
+        }
     }
 
     if add_newline {
@@ -74,7 +83,9 @@ fn print_attribute(class: &Class, attr: &AttributeInfo, depth: usize) {
     }
 }
 
-fn print_class_access(access: &class::Access) {
+use ::class::access::*;
+
+fn print_class_properties(props: &ClassProperties) {
     let mut was_written = false;
     let mut write = |s, col| {
         if was_written {
@@ -85,28 +96,26 @@ fn print_class_access(access: &class::Access) {
         }
     };
 
-    if access.is(class::Access::PUBLIC) {
+    if props.access == Access::Public {
         write("public", "access.visibility.public");
     }
 
-    if access.is(class::Access::ENUM) {
-        write("enum", "access.class.enum");
-    } else if access.is(class::Access::ANNOTATION) {
-        write("@interface", "access.class.annotation");
-    } else if access.is(class::Access::INTERFACE) {
-        write("interface", "access.class.interface");
-    } else {
-        if access.is(class::Access::FINAL) {
-            write("final", "access.other.final");
-        } else if access.is(class::Access::ABSTRACT) {
-            write("abstract", "access.other.abstract");
+    match props.ty {
+        ClassType::Class => {
+            if props.is_final {
+                write("final", "access.other.final");
+            } else if props.is_abstract {
+                write("abstract", "access.other.abstract");
+            }
+            write("class", "access.class.class")
         }
-
-        write("class", "access.class.class");
+        ClassType::Enum => write("enum", "access.class.enum"),
+        ClassType::Interface => write("interface", "access.class.interface"),
+        ClassType::Annotation => write("@interface", "access.class.annotation"),
     }
 }
 
-fn print_field_access(access: &field::Access) {
+fn print_field_properties(props: &FieldProperties) {
     let mut was_written = false;
     let mut write = |s, col| {
         if was_written {
@@ -117,25 +126,24 @@ fn print_field_access(access: &field::Access) {
         }
     };
 
-    if access.is(field::Access::PUBLIC) {
-        write("public", "access.visibility.public");
-    } else if access.is(field::Access::PROTECTED) {
-        write("protected", "access.visibility.protected");
-    } else if access.is(field::Access::PRIVATE) {
-        write("private", "access.visibility.private");
+    match props.access {
+        Access::Public => write("public", "access.visibility.public"),
+        Access::Protected => write("protected", "access.visibility.protected"),
+        Access::Private => write("private", "access.visibility.private"),
+        _ => (),
     }
 
-    if access.is(field::Access::STATIC) {
+    if props.is_static {
         write("static", "access.other.static");
     }
 
-    if access.is(field::Access::FINAL) {
+    if props.is_final {
         write("final", "access.other.final");
-    } else if access.is(field::Access::TRANSIENT) {
+    } else if props.is_transient {
         write("transient", "access.field.transient");
     }
 
-    if access.is(field::Access::VOLATILE) {
+    if props.is_volatile {
         write("volatile", "access.field.volatile");
     }
 
@@ -144,7 +152,7 @@ fn print_field_access(access: &field::Access) {
     }
 }
 
-fn print_method_access(access: &method::Access) {
+fn print_method_properties(props: &MethodProperties) {
     let mut was_written = false;
     let mut write = |s, col| {
         if was_written {
@@ -155,34 +163,34 @@ fn print_method_access(access: &method::Access) {
         }
     };
 
-    if access.is(method::Access::PUBLIC) {
-        write("public", "access.visibility.public");
-    } else if access.is(method::Access::PROTECTED) {
-        write("protected", "access.visibility.protected");
-    } else if access.is(method::Access::PRIVATE) {
-        write("private", "access.visibility.private");
+    // TODO: deduplicate code
+    match props.access {
+        Access::Public => write("public", "access.visibility.public"),
+        Access::Protected => write("protected", "access.visibility.protected"),
+        Access::Private => write("private", "access.visibility.private"),
+        _ => (),
     }
 
-    if access.is(method::Access::ABSTRACT) {
+    if props.is_abstract {
         write("abstract", "access.other.static");
     } else {
-        if access.is(method::Access::STATIC) {
+        if props.is_static {
             write("static", "access.other.static");
         }
 
-        if access.is(method::Access::FINAL) {
+        if props.is_final {
             write("final", "access.other.final");
         }
 
-        if access.is(method::Access::SYNCHRONIZED) {
+        if props.is_synchronized {
             write("synchronized", "access.method.synchronized");
         }
 
-        if access.is(method::Access::STRICT) {
+        if props.is_strict {
             write("strictfp", "access.method.strictfp");
         }
 
-        if access.is(method::Access::NATIVE) {
+        if props.is_native {
             write("native", "access.method.native");
         }
     }
@@ -542,7 +550,7 @@ impl App {
 }
 
 fn print_class_decl(class: &Class) {
-    print_class_access(&class.access_flags);
+    print_class_properties(&class.properties);
 
     print!(" ");
 
@@ -568,8 +576,67 @@ fn get_signature_attrib<'p>(pool: &'p [Constant], attributes: &[AttributeInfo]) 
     None
 }
 
+use std::cmp::Ordering;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct FieldPropertiesOrdering(FieldProperties);
+
+impl PartialOrd for FieldPropertiesOrdering {
+    fn partial_cmp(&self, other: &FieldPropertiesOrdering) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for FieldPropertiesOrdering {
+    fn cmp(&self, other: &FieldPropertiesOrdering) -> Ordering {
+        (other.0.is_enum.cmp(&self.0.is_enum))
+            .then(other.0.is_static.cmp(&self.0.is_static))
+            .then(
+                self.0
+                    .is_compiler_generated
+                    .cmp(&other.0.is_compiler_generated),
+            )
+            .then(self.0.access.cmp(&other.0.access))
+            .then(other.0.is_final.cmp(&self.0.is_final))
+            .then(other.0.is_volatile.cmp(&self.0.is_volatile))
+            .then(other.0.is_transient.cmp(&self.0.is_transient))
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct MethodPropertiesOrdering(MethodProperties);
+
+impl PartialOrd for MethodPropertiesOrdering {
+    fn partial_cmp(&self, other: &MethodPropertiesOrdering) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for MethodPropertiesOrdering {
+    fn cmp(&self, other: &MethodPropertiesOrdering) -> Ordering {
+        (other.0.is_static.cmp(&self.0.is_static))
+            .then(other.0.is_abstract.cmp(&self.0.is_abstract))
+            .then(
+                self.0
+                    .is_compiler_generated
+                    .cmp(&other.0.is_compiler_generated),
+            )
+            .then(self.0.access.cmp(&other.0.access))
+            .then(other.0.is_final.cmp(&self.0.is_final))
+            .then(other.0.is_synchronized.cmp(&self.0.is_synchronized))
+            .then(other.0.is_native.cmp(&self.0.is_native))
+            .then(other.0.is_strict.cmp(&self.0.is_strict))
+    }
+}
+
 fn parse_class(buf: &[u8]) {
-    let class = Class::parse(buf).unwrap();
+    let class = match Class::parse(buf) {
+        Ok(class) => class,
+        Err(err) => {
+            println!("Invalid Class! Raw error: {:?}", err);
+            return;
+        }
+    };
 
     if APP.show_constant_pool {
         for entry in 1..class.pool.len() {
@@ -593,13 +660,26 @@ fn parse_class(buf: &[u8]) {
 
         println!(" {{");
 
-        for field in &*class.fields {
+        let mut fields = class.fields.clone();
+        fields.sort_by_key(|item| FieldPropertiesOrdering(item.properties));
+
+        let mut methods = class.methods.clone();
+        methods.sort_by_key(|item| MethodPropertiesOrdering(item.properties));
+
+        let mut was_static = fields.iter().map(|f| f.properties.is_static).next();
+
+        for field in &*fields {
+            if Some(field.properties.is_static) != was_static {
+                was_static = Some(field.properties.is_static);
+                println!();
+            }
+
             for attr in &*field.attributes {
                 print_attribute(&class, &attr, 1);
             }
 
             pad(1);
-            print_field_access(&field.access);
+            print_field_properties(&field.properties);
             let name = pool::get_str(&class.pool, field.name);
 
             let signature = get_signature_attrib(&class.pool, &*field.attributes)
@@ -621,13 +701,20 @@ fn parse_class(buf: &[u8]) {
 
         println!();
 
-        for method in &*class.methods {
+        let mut was_static = methods.iter().map(|m| m.properties.is_static).next();
+
+        for method in &*methods {
+            if Some(method.properties.is_static) != was_static {
+                was_static = Some(method.properties.is_static);
+                println!();
+            }
+
             for attr in &*method.attributes {
                 print_attribute(&class, &attr, 1);
             }
 
             pad(1);
-            print_method_access(&method.access);
+            print_method_properties(&method.properties);
             let name = pool::get_str(&class.pool, method.name);
 
             let signature = get_signature_attrib(&class.pool, &*method.attributes)

@@ -34,10 +34,10 @@ lazy_static::lazy_static! {
 
         let entries = entries! {
             "comment" => base Color::Cyan.normal(),
-            "extends" => base Color::Purple.bold(),
-            "super" => base Color::Purple.bold(),
-            "path" => base Color::Green.normal(),
-            "throws" => base Color::Purple.bold(),
+            "extends" => base Color::Green.normal(),
+            "super" => base Color::Green.normal(),
+            "path" => base Default::default(),
+            "throws" => base Color::Green.normal(),
 
             "type" => base Color::Blue.bold(),
             "type.object" => inherit Overrides::default(),
@@ -80,7 +80,7 @@ lazy_static::lazy_static! {
             "access.visibility.protected" => inherit Overrides::default(),
             "access.visibility.private" => inherit Overrides::default(),
 
-            "access" => base Color::Purple.bold(),
+            "access" => base Color::Green.normal(),
             "access.other.final" => inherit Overrides::default(),
             "access.other.static" => inherit Overrides::default(),
             "access.other.abstract" => inherit Overrides::default(),
@@ -92,7 +92,7 @@ lazy_static::lazy_static! {
             "access.method.strictfp" => inherit Overrides::default(),
             "access.method.native" => inherit Overrides::default(),
 
-            "access.class" => base Color::Purple.bold(),
+            "access.class" => base Color::Green.normal(),
             "access.class.enum" => inherit Overrides::default(),
             "access.class.interface" => inherit Overrides::default(),
             "access.class.class" => inherit Overrides::default(),

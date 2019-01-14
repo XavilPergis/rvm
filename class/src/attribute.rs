@@ -216,6 +216,24 @@ pub enum Attribute {
     /// Contains either a class, method, or field signature, depending on what
     /// the attribute was declared on.
     Signature(PoolIndex),
+
+    /// Represents which checked exceptions a method can throw. Each item is an
+    /// index to a `Class` constant that represents a class that can be thrown.
+    Exceptions(Box<[PoolIndex]>),
+}
+
+// Attribute::Exceptions {
+//     // must point to a `Constant::StringData` containing `"Exceptions"`
+//     name_index: u16,
+//     length: u32,
+//     exceptions_len: u16,
+//     exception_index_table: [u16; exceptions_len],
+// }
+pub fn parse_exceptions(input: &mut ByteParser<'_>) -> ClassResult<Box<[PoolIndex]>> {
+    let len = input.parse_u16()? as usize;
+    Ok(input
+        .seq(len, |input| input.parse_u16().map(|idx| idx as usize))?
+        .into())
 }
 
 // ExceptionInfo {
@@ -391,6 +409,7 @@ pub fn parse_attribute(
             "Code" => Attribute::Code(parse_code(input, pool)?),
             "StackMapTable" => Attribute::StackMapTable(parse_stack_map_table(input)?),
             "Signature" => Attribute::Signature(input.parse_u16()? as usize),
+            "Exceptions" => Attribute::Exceptions(parse_exceptions(input)?),
             _ => Attribute::Other(input.take(len)?.into()),
         }),
         _ => Err(ClassError::InvalidPoolType),

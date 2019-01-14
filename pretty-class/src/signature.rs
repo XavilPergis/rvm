@@ -1,5 +1,6 @@
 use crate::APP;
 use ::class::{
+    access::ClassType,
     constant::Constant,
     field::{self, BaseType, FieldType},
     method::{self, ReturnDescriptor},
@@ -167,7 +168,7 @@ pub fn print_class(sig: &ClassSignature, class: &Class) {
     }
 
     if sig.implements.len() > 0 {
-        if class.access_flags.is(::class::class::Access::INTERFACE) {
+        if class.properties.ty == ClassType::Interface {
             APP.paint("extends", || print!(" extends "));
         } else {
             APP.paint("extends", || print!(" implements "));
@@ -195,7 +196,7 @@ pub fn print_method(sig: &MethodSignature, name: &str) {
         print_type(ty);
         print!(" ");
     } else {
-        print!("void ");
+        APP.paint("type.primitive.void", || print!("void "));
     }
 
     print!("{}(", name);

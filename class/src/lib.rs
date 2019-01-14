@@ -1,3 +1,4 @@
+pub mod access;
 pub mod attribute;
 pub mod class;
 pub mod constant;
@@ -39,6 +40,8 @@ pub enum ClassError {
     // Signature parse errors
     InvalidWildcardBound(u8),
     InvalidBaseType(u8),
+
+    InvalidAccessFlags(u16),
 }
 
 impl From<ParseError> for ClassError {
