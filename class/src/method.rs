@@ -75,7 +75,7 @@ pub fn parse_method(input: &mut ByteParser<'_>, pool: &[Constant]) -> ClassResul
     })
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Method {
     /// Method properties
     pub properties: MethodProperties,

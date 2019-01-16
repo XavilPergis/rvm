@@ -40,6 +40,20 @@ pub struct Descriptor {
     pub ty: FieldType,
 }
 
+pub fn parse_base_type(tag: u8) -> ClassResult<BaseType> {
+    Ok(match tag {
+        b'B' => BaseType::Byte,
+        b'C' => BaseType::Char,
+        b'D' => BaseType::Double,
+        b'F' => BaseType::Float,
+        b'I' => BaseType::Int,
+        b'J' => BaseType::Long,
+        b'S' => BaseType::Short,
+        b'Z' => BaseType::Boolean,
+        k => return Err(ClassError::InvalidBaseType(k)),
+    })
+}
+
 pub fn parse_field_descriptor(input: &mut ByteParser<'_>) -> ClassResult<Descriptor> {
     match input.peek(1)?[0] {
         b'[' => {
@@ -61,17 +75,12 @@ pub fn parse_field_descriptor(input: &mut ByteParser<'_>) -> ClassResult<Descrip
 pub fn parse_field_descriptor_terminal(input: &mut ByteParser<'_>) -> ClassResult<FieldType> {
     // TODO: verify there's not extra gunk at the end of the descriptor
     Ok(match input.parse_u8()? {
-        b'B' => FieldType::Primitive(BaseType::Byte),
-        b'C' => FieldType::Primitive(BaseType::Char),
-        b'D' => FieldType::Primitive(BaseType::Double),
-        b'F' => FieldType::Primitive(BaseType::Float),
-        b'I' => FieldType::Primitive(BaseType::Int),
-        b'J' => FieldType::Primitive(BaseType::Long),
-        b'S' => FieldType::Primitive(BaseType::Short),
-        b'Z' => FieldType::Primitive(BaseType::Boolean),
         b'L' => FieldType::Object(parse::parse_mutf8(input.take_while(|ch| ch != b';')?)?.into()),
 
-        other => return Err(ClassError::BadDescriptorType(other)),
+        other => match parse_base_type(other) {
+            Ok(base) => FieldType::Primitive(base),
+            Err(_) => return Err(ClassError::BadDescriptorType(other)),
+        },
     })
 }
 

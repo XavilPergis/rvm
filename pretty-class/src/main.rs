@@ -4,13 +4,14 @@ use crate::{
 };
 use ::class::{
     attribute::{Attribute, AttributeInfo, Code},
-    class::{self, Class},
+    class::Class,
     constant::Constant,
-    field, method,
     parse::ByteParser,
     signature as sig,
 };
-use std::{fs::File, io::Read, path::PathBuf};
+use ansi_term::Style;
+use class::attribute::{Annotation, AnnotationPair, AnnotationValue};
+use std::{fs::File, io::Read, path::PathBuf, sync::Mutex};
 use structopt::StructOpt;
 
 pub mod code;
@@ -25,61 +26,186 @@ fn pad(count: usize) {
     }
 }
 
-fn print_attribute(class: &Class, attr: &AttributeInfo, depth: usize) {
-    if !APP.show_attributes {
+fn print_annotation_value(pool: &[Constant], val: &AnnotationValue) {
+    match val {
+        AnnotationValue::Class(idx) => {
+            constant::print_constant_value(pool, *idx);
+            print!(".");
+            APP.paint("access.class", || print!("class"));
+        }
+
+        AnnotationValue::String(idx) => {
+            print!("\"");
+            constant::print_constant_value(pool, *idx);
+            print!("\"");
+        }
+        AnnotationValue::Primitive(_, idx) => {
+            constant::print_constant_value(pool, *idx);
+        }
+
+        AnnotationValue::Enum { ty, name } => {
+            if let Some(name) = pool[*ty].as_string_data() {
+                let name = name.split("/").last().unwrap();
+                print!("{}", &name[..name.len() - 1]);
+            } else {
+                print!("<invalid enum name>");
+            }
+            // constant::print_constant_value(pool, *ty);
+            print!(".");
+            constant::print_constant_value(pool, *name);
+        }
+
+        // AnnotationValue::Annotation()
+        AnnotationValue::Array(vals) => {
+            print!("{{ ");
+            print_annotation_value(pool, &vals[0]);
+
+            for pair in &vals[1..] {
+                print!(", ");
+                print_annotation_value(pool, pair);
+            }
+            print!(" }}");
+        }
+
+        _ => (),
+    }
+}
+
+fn print_annotation_pair(pool: &[Constant], pair: &AnnotationPair, print_name: bool) {
+    if print_name {
+        print!("{} = ", pool::get_str(pool, pair.name));
+    }
+    print_annotation_value(pool, &pair.value);
+}
+
+fn print_annotation(pool: &[Constant], annotation: &Annotation) {
+    use ::class::field::FieldType;
+    if let Some(descriptor) = pool[annotation.ty].as_string_data().and_then(|name| {
+        ::class::field::parse_field_descriptor(&mut ByteParser::new(name.as_bytes())).ok()
+    }) {
+        APP.paint("annotation", || {
+            print!("@");
+
+            match &descriptor.ty {
+                FieldType::Object(name) => {
+                    let name = name.split("/").last().unwrap();
+                    print!("{}", name);
+                }
+                FieldType::Primitive(ty) => print!("<illegal primitive annotation {:?}>", ty),
+            }
+            if annotation.fields.len() > 0 {
+                print!("(",);
+                print_annotation_pair(pool, &annotation.fields[0], annotation.fields.len() > 1);
+
+                for pair in &annotation.fields[1..] {
+                    print!(", ");
+                    print_annotation_pair(pool, pair, true);
+                }
+
+                print!(")");
+            }
+        });
+    }
+}
+
+fn print_attribute(pool: &[Constant], attr: &AttributeInfo, depth: usize) {
+    if !APP.args.show_attributes {
         return;
     }
 
-    let mut add_newline = true;
     pad(depth);
-
-    APP.paint("comment", || {
-        print!(
-            "// {}{}: ",
-            match &attr.attr {
-                Attribute::Other(_) => "?",
-                _ => " ",
-            },
-            pool::get_str(&class.pool, attr.name)
-        );
-    });
+    fn print_attrib_name(pool: &[Constant], attr: &AttributeInfo, depth: usize, colon: bool) {
+        APP.paint("comment", || {
+            print!("//");
+            pad(depth);
+            print!(
+                "{}{}",
+                match &attr.attr {
+                    Attribute::Other(_) => "?",
+                    _ => " ",
+                },
+                pool::get_str(pool, attr.name)
+            );
+            if colon {
+                print!(": ");
+            }
+        });
+    }
 
     match &attr.attr {
         Attribute::Other(bytes) => {
+            print_attrib_name(pool, attr, 0, true);
             for b in &**bytes {
                 print!("{:02x} ", b);
             }
+            println!();
         }
 
         Attribute::Code(code) => {
-            println!();
-            if APP.show_code {
-                print_code(&class.pool, code);
+            print_attrib_name(pool, attr, 0, APP.args.show_code);
+            if APP.args.show_code {
+                print_code(pool, code);
             }
-            add_newline = false;
+            println!();
         }
 
-        Attribute::StackMapTable(_) => print!("StackMapTable"),
         Attribute::ConstantValue(idx) => {
-            if constant::print_constant_index(&class.pool, *idx) {
+            print_attrib_name(pool, attr, 0, true);
+            if constant::print_constant_index(pool, *idx) {
                 print!(" ");
             }
-            constant::print_constant_value(&class.pool, *idx);
+            constant::print_constant_value(pool, *idx);
+            println!();
         }
-        Attribute::Signature(idx) => print!("{}", pool::get_str(&class.pool, *idx)),
+        Attribute::Signature(idx) => {
+            print_attrib_name(pool, attr, 0, true);
+            constant::print_constant_value(pool, *idx);
+            println!();
+        }
         Attribute::Exceptions(exceptions) => {
+            print_attrib_name(pool, attr, 0, true);
             if exceptions.len() > 0 {
-                constant::print_constant_value(&class.pool, exceptions[0]);
+                constant::print_constant_value(pool, exceptions[0]);
                 for &idx in &exceptions[1..] {
                     print!(", ");
-                    constant::print_constant_value(&class.pool, idx);
+                    constant::print_constant_value(pool, idx);
                 }
             }
+            println!();
         }
-    }
 
-    if add_newline {
-        println!();
+        // Attribute::InnerClasses(Box<[InnerClass]>),
+        // Attribute::EnclosingMethod {
+        //     class: PoolIndex,
+        //     method: Option<PoolIndex>,
+        // },
+        Attribute::Synthetic => {
+            print_attrib_name(pool, attr, depth, false);
+            println!();
+        }
+        Attribute::SourceFile(idx) => {
+            print_attrib_name(pool, attr, depth, true);
+            constant::print_constant_value(pool, *idx);
+            println!();
+        }
+        // Attribute::SourceDebugExtension(String),
+        // Attribute::LineNumberTable(HashMap<usize, usize>),
+        // Attribute::LocalVariableTable(Box<[LocalVariable]>),
+        // Attribute::LocalVariableTypeTable(Box<[LocalVariable]>),
+        // Attribute::Deprecated,
+        Attribute::RuntimeVisibleAnnotations(annotations)
+        | Attribute::RuntimeInvisibleAnnotations(annotations) => {
+            // print_attrib_name(pool, attr, 0, true);
+            for annotation in &**annotations {
+                print_annotation(pool, annotation);
+                println!();
+            }
+            // print!("{:?}", annotations);
+        }
+        _ => {
+            print_attrib_name(pool, attr, 0, false);
+            println!();
+        }
     }
 }
 
@@ -269,7 +395,7 @@ fn print_code(pool: &[Constant], code: &Code) {
                     };
 
                     // TODO: clean this up somehow?
-                    if APP.no_color {
+                    if APP.args.no_color {
                         print!("{}", v);
                     } else {
                         let style = if slot % 2 == 1 {
@@ -499,12 +625,12 @@ fn print_code(pool: &[Constant], code: &Code) {
 }
 
 lazy_static::lazy_static! {
-    pub static ref APP: App = App::from_args();
+    pub static ref APP: App = App { args: AppArgs::from_args(), last_style: Default::default() };
 }
 
 #[derive(Clone, Debug, PartialEq, StructOpt)]
 #[structopt(name = "ppclass")]
-pub struct App {
+pub struct AppArgs {
     /// Input files to parse.
     #[structopt(name = "FILE", parse(from_os_str))]
     pub input: Vec<PathBuf>,
@@ -534,17 +660,41 @@ pub struct App {
     pub no_show_paths: bool,
 }
 
+pub struct App {
+    pub args: AppArgs,
+    last_style: Mutex<Option<Style>>,
+}
+
 impl App {
     pub fn paint<F>(&self, style: &str, func: F)
     where
         F: FnOnce(),
     {
-        if self.no_color {
+        if self.args.no_color {
             func();
         } else {
-            print!("{}", STYLE_MAP[style].prefix());
+            let (old, new) = {
+                // NOTE: This probably wouldn't actually work in a MT environment, but we aren't
+                // gonna be printing with multiple threads anyways! We just need the mutex
+                // because we need to be Send+Sync to be able to stuff this type in a static.
+                let mut last = self.last_style.lock().unwrap();
+
+                let old = *last;
+                let new = STYLE_MAP[style];
+                *last = Some(new);
+
+                (old, new)
+            };
+
+            print!("{}", new.prefix());
             func();
-            print!("{}", STYLE_MAP[style].suffix());
+
+            match old {
+                Some(style) => print!("{}", style.prefix()),
+                None => print!("{}", new.suffix()),
+            }
+
+            *self.last_style.lock().unwrap() = old;
         }
     }
 }
@@ -638,7 +788,7 @@ fn parse_class(buf: &[u8]) {
         }
     };
 
-    if APP.show_constant_pool {
+    if APP.args.show_constant_pool {
         for entry in 1..class.pool.len() {
             APP.paint("pool.index", || print!("{:5}", entry));
             print!(" = ");
@@ -647,9 +797,9 @@ fn parse_class(buf: &[u8]) {
     }
 
     use ::class::signature::Type;
-    if APP.show_decl {
+    if APP.args.show_decl {
         for attr in &*class.attributes {
-            print_attribute(&class, &attr, 0);
+            print_attribute(&class.pool, &attr, 0);
         }
 
         APP.paint("comment", || {
@@ -675,7 +825,7 @@ fn parse_class(buf: &[u8]) {
             }
 
             for attr in &*field.attributes {
-                print_attribute(&class, &attr, 1);
+                print_attribute(&class.pool, &attr, 1);
             }
 
             pad(1);
@@ -710,7 +860,7 @@ fn parse_class(buf: &[u8]) {
             }
 
             for attr in &*method.attributes {
-                print_attribute(&class, &attr, 1);
+                print_attribute(&class.pool, &attr, 1);
             }
 
             pad(1);
@@ -738,7 +888,7 @@ fn parse_class(buf: &[u8]) {
 
 fn main() {
     let mut buf = Vec::new();
-    for path in &APP.input {
+    for path in &APP.args.input {
         let mut file = File::open(path).unwrap();
         file.read_to_end(&mut buf).unwrap();
 

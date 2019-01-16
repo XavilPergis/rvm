@@ -38,6 +38,7 @@ lazy_static::lazy_static! {
             "super" => base Color::Green.normal(),
             "path" => base Default::default(),
             "throws" => base Color::Green.normal(),
+            "annotation" => base Color::Yellow.normal(),
 
             "type" => base Color::Blue.bold(),
             "type.object" => inherit Overrides::default(),

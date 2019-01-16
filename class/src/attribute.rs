@@ -113,6 +113,15 @@
 //! }
 //! ```
 
+use crate::{
+    access::{FromAccessBitfield, InnerClassProperties},
+    constant::{Constant, PoolIndex},
+    field::BaseType,
+    parse::{ByteParser, ParseError},
+    ClassError, ClassResult,
+};
+use std::{collections::HashMap, ops::Range};
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum VerificationType {
     Top,
@@ -147,21 +156,30 @@ pub enum StackMapFrame {
     },
 }
 
-use crate::{
-    constant::{Constant, PoolIndex},
-    parse::ByteParser,
-    ClassError, ClassResult,
-};
-use std::ops::Range;
+// TODO: move somewhere else; it doesn't belong here.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct HalfOpen<Idx> {
+    pub start: Idx,
+    pub end: Idx,
+}
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+impl<I> From<Range<I>> for HalfOpen<I> {
+    fn from(range: Range<I>) -> Self {
+        HalfOpen {
+            start: range.start,
+            end: range.end,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct ExceptionInfo {
-    pub active_region: Range<usize>,
+    pub active_region: HalfOpen<usize>,
     pub handler_pc: PoolIndex,
     pub catch_type: PoolIndex,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Code {
     /// The maximum amount of items on the operand stack
     pub max_stack: usize,
@@ -180,7 +198,62 @@ pub struct Code {
     pub attributes: Box<[AttributeInfo]>,
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub struct InnerClass {
+    pub info: PoolIndex,
+    pub outer_info: Option<PoolIndex>,
+    pub name: Option<PoolIndex>,
+    pub properties: InnerClassProperties,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub struct LocalVariable {
+    /// The range of bytecode indices in which this local variable needs to have
+    /// a value.
+    pub range: HalfOpen<usize>,
+    /// The name of this variable.
+    pub name: PoolIndex,
+    /// The constant pool index of either the field descriptor or the field
+    /// signature of this variable.
+    pub ty: PoolIndex,
+    /// The Index into the local variable table that this local variable should
+    /// appear at.
+    pub lvt_index: usize,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct Annotation {
+    pub ty: PoolIndex,
+    pub fields: Box<[AnnotationPair]>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct AnnotationPair {
+    pub name: PoolIndex,
+    pub value: AnnotationValue,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub enum AnnotationValue {
+    // Const value
+    Primitive(BaseType, PoolIndex),
+    String(PoolIndex),
+
+    // Enum const value
+    Enum { ty: PoolIndex, name: PoolIndex },
+
+    Class(PoolIndex),
+    Annotation(Box<Annotation>),
+    Array(Box<[AnnotationValue]>),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct BootstrapMethod {
+    pub method: PoolIndex,
+    pub arguments: Box<[PoolIndex]>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Attribute {
     /// Attribute that was unrecognized by the class file parser, it does not
     /// have any semantic meaning and is just there as additional info
@@ -220,12 +293,262 @@ pub enum Attribute {
     /// Represents which checked exceptions a method can throw. Each item is an
     /// index to a `Class` constant that represents a class that can be thrown.
     Exceptions(Box<[PoolIndex]>),
+
+    /// Represents which classes this class contains. This attribute should only
+    /// appear in a class attribute table.
+    InnerClasses(Box<[InnerClass]>),
+
+    /// Represents the enclosing method of a local or anonymous class. This
+    /// attribute should only appear in a class attribute table.
+    EnclosingMethod {
+        class: PoolIndex,
+        method: Option<PoolIndex>,
+    },
+
+    /// A marker that means this item does not appear anywhere in source code.
+    /// If the item is synthetic, either this attribute must be present or the
+    /// synthetic access flag must be set.
+    Synthetic,
+
+    /// Points to a `StringData` entry in the constant pool representing the
+    /// file name of the class this is declared on. This attribute should only
+    /// appear in a class attribute table.
+    SourceFile(PoolIndex),
+
+    /// Arbitrary extended debugging data. Shoould have no effect on the JVM.
+    SourceDebugExtension(String),
+
+    /// Represents a mapping between the start of an instruction (offset into
+    /// the `Code` attribute) and the line number this instruction was generated
+    /// from.
+    LineNumberTable(HashMap<usize, usize>),
+
+    /// Type-erased local variable table.
+    LocalVariableTable(Box<[LocalVariable]>),
+    /// Fully elaborated local variable table.
+    LocalVariableTypeTable(Box<[LocalVariable]>),
+
+    /// A marker that means this item is deprecated and should not be used in
+    /// the future. This should not have any effect on semantics.
+    Deprecated,
+
+    /// Represents annotations that are available for reflective APIs to
+    /// consume. At most one of this attribute may appear on a class, field, or
+    /// method.
+    RuntimeVisibleAnnotations(Box<[Annotation]>),
+    /// Represents annotations that are **not** available for reflective APIs to
+    /// consume. At most one of this attribute may appear on a class, field, or
+    /// method.
+    RuntimeInvisibleAnnotations(Box<[Annotation]>),
+    RuntimeVisibleParameterAnnotations(Box<[Box<[Annotation]>]>),
+    RuntimeInvisibleParameterAnnotations(Box<[Box<[Annotation]>]>),
+
+    AnnotationDefault(AnnotationValue),
+    BootstrapMethods(Box<[BootstrapMethod]>),
+}
+
+fn parse_pool_index(input: &mut ByteParser<'_>) -> ClassResult<Option<usize>> {
+    input
+        .parse_u16()
+        .map(|idx| match idx {
+            0 => None,
+            k => Some(k as usize),
+        })
+        .map_err(Into::into)
+}
+
+fn parse_pool_index_nonzero(input: &mut ByteParser<'_>) -> ClassResult<usize> {
+    parse_pool_index(input).and_then(|idx| idx.ok_or(ClassError::InvalidPoolIndex))
+}
+
+pub fn parse_string(input: &mut ByteParser<'_>, len: usize) -> ClassResult<String> {
+    crate::mutf8::parse_mutf8(input.take(len)?).map(Into::into)
+}
+
+// AnnotationValue {
+//     tag: u8,
+//     value: match tag {
+//         b'B' | b'C' | b'D' | b'F' | b'I' | b'J' | b'S' | b'Z' =>
+//             AnnotationValue::Primitive(BaseType, u16),
+//         b's' => AnnotationValue::String(u16),
+//         b'e' => AnnotationValue::EnumConst(u16, u16),
+//         b'c' => AnnotationValue::Class(u16),
+//         b'@' => AnnotationValue::Annotation(Annotation),
+//         b'[' => AnnotationValue::Array {
+//             num_values: u16,
+//             values: [AnnotationValue; num_values],
+//         },
+//     },
+// }
+pub fn parse_annotation_value(input: &mut ByteParser<'_>) -> ClassResult<AnnotationValue> {
+    Ok(match input.parse_u8()? {
+        b's' => AnnotationValue::String(input.parse_u16()? as usize),
+        b'e' => AnnotationValue::Enum {
+            ty: input.parse_u16()? as usize,
+            name: input.parse_u16()? as usize,
+        },
+        b'c' => AnnotationValue::Class(input.parse_u16()? as usize),
+        b'@' => AnnotationValue::Annotation(Box::new(parse_annotation(input)?)),
+        b'[' => AnnotationValue::Array({
+            let len = input.parse_u16()? as usize;
+            input.seq(len, parse_annotation_value)?.into()
+        }),
+
+        tag => AnnotationValue::Primitive(
+            crate::field::parse_base_type(tag)?,
+            input.parse_u16()? as usize,
+        ),
+    })
+}
+
+// BootstrapMethod {
+//     bootstrap_method_ref: u16,
+//     num_bootstrap_arguments: u16,
+//     bootstrap_arguments: [u16; num_bootstrap_arguments],
+// }
+pub fn parse_bootstrap_method(input: &mut ByteParser<'_>) -> ClassResult<BootstrapMethod> {
+    Ok(BootstrapMethod {
+        method: parse_pool_index_nonzero(input)?,
+        arguments: {
+            let len = input.parse_u16()? as usize;
+            input.seq(len, parse_pool_index_nonzero)?.into()
+        },
+    })
+}
+
+// Attribute::BootstrapMethods {
+//     num_bootstrap_methods: u16,
+//     bootstrap_methods: [BootstrapMethod; num_bootstrap_methods],
+// }
+pub fn parse_bootstrap_methods(input: &mut ByteParser<'_>) -> ClassResult<Box<[BootstrapMethod]>> {
+    let num = input.parse_u16()? as usize;
+    input.seq(num, parse_bootstrap_method).map(Into::into)
+}
+
+// AnnotationPair {
+//     element_name_index: u16,
+//     value: AnnotationValue,
+// }
+pub fn parse_annotation_pair(input: &mut ByteParser<'_>) -> ClassResult<AnnotationPair> {
+    Ok(AnnotationPair {
+        name: input.parse_u16()? as usize,
+        value: parse_annotation_value(input)?,
+    })
+}
+
+// Annotation {
+//     type_index: u16,
+//     num_element_value_pairs: u16,
+//     element_value_pairs: [AnnotationPair; num_element_value_pairs],
+// }
+pub fn parse_annotation(input: &mut ByteParser<'_>) -> ClassResult<Annotation> {
+    Ok(Annotation {
+        ty: input.parse_u16()? as usize,
+        fields: {
+            let len = input.parse_u16()? as usize;
+            input.seq(len, parse_annotation_pair)?.into()
+        },
+    })
+}
+
+// Annotation::RuntimeVisibleAnnotations,
+// Annotation::RuntimeInvisibleAnnotations {
+//     annotations: Annotations,
+// }
+//
+// Annotations {
+//     num_annotations: u16,
+//     annotations: [Annotation; num_annotations],
+// }
+pub fn parse_annotations(input: &mut ByteParser<'_>) -> ClassResult<Box<[Annotation]>> {
+    let num = input.parse_u16()? as usize;
+    input.seq(num, parse_annotation).map(Into::into)
+}
+
+// Attribute::RuntimeVisibleParameterAnnotations,
+// Attribute::RuntimeInvisibleParameterAnnotations {
+//     num_parameters: u8,
+//     parameter_annotations: [Annotations; num_parameters],
+// }
+pub fn parse_parameter_annotations(
+    input: &mut ByteParser<'_>,
+) -> ClassResult<Box<[Box<[Annotation]>]>> {
+    let num = input.parse_u8()? as usize;
+    input.seq(num, parse_annotations).map(Into::into)
+}
+
+// LocalVariable {
+//     start_pc: u16,
+//     length: u16,
+//     name_index: u16,
+//     descriptor_index: u16,
+//     index: u16,
+// }
+pub fn parse_local_variable(input: &mut ByteParser<'_>) -> ClassResult<LocalVariable> {
+    let start = input.parse_u16()? as usize;
+    let end = start + input.parse_u16()? as usize;
+
+    Ok(LocalVariable {
+        range: HalfOpen::from(start..end),
+        name: input.parse_u16()? as usize,
+        ty: input.parse_u16()? as usize,
+        lvt_index: input.parse_u16()? as usize,
+    })
+}
+
+// Attribute::LocalVariableTable {
+//     local_variable_table_len: u16,
+//     local_variable_table: [LocalVariable; local_variable_table_len],
+// }
+pub fn parse_local_variable_table(input: &mut ByteParser<'_>) -> ClassResult<Box<[LocalVariable]>> {
+    let num = input.parse_u16()? as usize;
+    input.seq(num, parse_local_variable).map(Into::into)
+}
+
+// LineNumberMapping {
+//     start_pc: u16,
+//     line_number: u16,
+// }
+//
+// Attribute::LineNumberTable {
+//     line_number_table_len: u16,
+//     line_number_table: [LineNumberMapping; line_number_table_len];
+// }
+pub fn parse_line_numer_table(input: &mut ByteParser<'_>) -> ClassResult<HashMap<usize, usize>> {
+    let len = input.parse_u16()? as usize;
+    Ok((0..len)
+        .map(|_| Ok((input.parse_u16()? as usize, input.parse_u16()? as usize)))
+        .collect::<Result<_, ParseError>>()?)
+}
+
+// InnerClass {
+//     inner_class_info_index: u16,
+//     outer_class_info_index: u16,
+//     inner_name_index: u16,
+//     inner_class_access_flags: u16,
+// }
+pub fn parse_inner_class(input: &mut ByteParser<'_>) -> ClassResult<InnerClass> {
+    Ok(InnerClass {
+        info: parse_pool_index_nonzero(input)?,
+        outer_info: parse_pool_index(input)?,
+        name: parse_pool_index(input)?,
+        properties: {
+            let idx = input.parse_u16()?;
+            InnerClassProperties::from_bitfield(idx).ok_or(ClassError::InvalidAccessFlags(idx))?
+        },
+    })
+}
+
+// Attribute::InnerClasses {
+//     classes_len: u16,
+//     classes: [InnerClass; classes_len],
+// }
+pub fn parse_inner_classes(input: &mut ByteParser<'_>) -> ClassResult<Box<[InnerClass]>> {
+    let num = input.parse_u16()? as usize;
+    input.seq(num, parse_inner_class).map(Into::into)
 }
 
 // Attribute::Exceptions {
-//     // must point to a `Constant::StringData` containing `"Exceptions"`
-//     name_index: u16,
-//     length: u32,
 //     exceptions_len: u16,
 //     exception_index_table: [u16; exceptions_len],
 // }
@@ -249,16 +572,13 @@ pub fn parse_exception_info(input: &mut ByteParser<'_>) -> ClassResult<Exception
     let catch_type = input.parse_u16()? as usize;
 
     Ok(ExceptionInfo {
-        active_region: start..end,
+        active_region: HalfOpen::from(start..end),
         handler_pc,
         catch_type,
     })
 }
 
 // Attribute::Code {
-//     // must point to a `Constant::StringData` containing `"Code"`
-//     name_index: u16,
-//     length: u32,
 //     max_stack: u16,
 //     max_locals: u16,
 //     // Must be greater than 0
@@ -408,8 +728,39 @@ pub fn parse_attribute(
             "ConstantValue" => Attribute::ConstantValue(input.parse_u16()? as usize),
             "Code" => Attribute::Code(parse_code(input, pool)?),
             "StackMapTable" => Attribute::StackMapTable(parse_stack_map_table(input)?),
-            "Signature" => Attribute::Signature(input.parse_u16()? as usize),
             "Exceptions" => Attribute::Exceptions(parse_exceptions(input)?),
+            "InnerClasses" => Attribute::InnerClasses(parse_inner_classes(input)?),
+            "EnclosingMethod" => Attribute::EnclosingMethod {
+                class: parse_pool_index_nonzero(input)?,
+                method: parse_pool_index(input)?,
+            },
+            "Synthetic" => Attribute::Synthetic,
+            "Signature" => Attribute::Signature(input.parse_u16()? as usize),
+            "SourceFile" => Attribute::SourceFile(parse_pool_index_nonzero(input)?),
+            "SourceDebugExtension" => Attribute::SourceDebugExtension(parse_string(input, len)?),
+            "LineNumberTable" => Attribute::LineNumberTable(parse_line_numer_table(input)?),
+            "LocalVariableTable" => {
+                Attribute::LocalVariableTable(parse_local_variable_table(input)?)
+            }
+            "LocalVariableTypeTable" => {
+                Attribute::LocalVariableTypeTable(parse_local_variable_table(input)?)
+            }
+            "Deprecated" => Attribute::Deprecated,
+
+            "RuntimeVisibleAnnotations" => {
+                Attribute::RuntimeVisibleAnnotations(parse_annotations(input)?)
+            }
+            "RuntimeInvisibleAnnotations" => {
+                Attribute::RuntimeInvisibleAnnotations(parse_annotations(input)?)
+            }
+            "RuntimeVisibleParameterAnnotations" => {
+                Attribute::RuntimeVisibleParameterAnnotations(parse_parameter_annotations(input)?)
+            }
+            "RuntimeInvisibleParameterAnnotations" => {
+                Attribute::RuntimeInvisibleParameterAnnotations(parse_parameter_annotations(input)?)
+            }
+            "AnnotationDefault" => Attribute::AnnotationDefault(parse_annotation_value(input)?),
+            "BootstrapMethods" => Attribute::BootstrapMethods(parse_bootstrap_methods(input)?),
             _ => Attribute::Other(input.take(len)?.into()),
         }),
         _ => Err(ClassError::InvalidPoolType),
@@ -418,7 +769,7 @@ pub fn parse_attribute(
     Ok(AttributeInfo { name: index, attr })
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AttributeInfo {
     /// Index into the constant pool, pointing to a `Constant::StringData` that
     /// denotes the name of the attribute.

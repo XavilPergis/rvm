@@ -268,7 +268,7 @@ pub fn print_reference_type(sig: &ReferenceType) {
 }
 
 fn print_path(segments: &[String]) {
-    if segments.len() > 0 && !APP.no_show_paths {
+    if segments.len() > 0 && !APP.args.no_show_paths {
         for segment in segments {
             APP.paint("path", || print!("{}", segment));
             print!(".");
